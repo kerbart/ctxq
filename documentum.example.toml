@@ -1,0 +1,127 @@
+# documentum.toml — every key with its default. Copy to the workspace root as
+# `documentum.toml` (or `.documentum.toml`, or point $DOCUMENTUM_CONFIG at it).
+# An absent file gives exactly these defaults. DOCUMENTUM_* environment
+# variables override the file; command-line flags override both.
+
+[embed]
+# local  : hashed n-gram vectors, offline, no download (default)
+# onnx   : embedded bge-small (build with --features onnx-embeddings)
+# ollama : POST /api/embed      openai : POST /v1/embeddings (LM Studio, vLLM, TEI, OpenAI…)
+backend = "local"
+# Remote servers, tried in order; the first that answers becomes preferred.
+urls = []                      # default http://localhost:11434 (ollama) / :8080 (openai)
+model = ""                     # default qwen3-embedding:0.6b (ollama) / text-embedding-3-small (openai)
+# NAME of the environment variable holding the API key — never the key itself.
+# api_key_env = "OPENAI_API_KEY"
+max_chars = 6000               # truncation before sending (deterministic index)
+concurrency = 1                # simultaneous requests: keep 1 on a shared server
+batch = 8                      # texts per request
+connect_timeout_secs = 2
+read_timeout_secs = 300
+# Task prefixes are applied automatically for known families (nomic, qwen3, e5,
+# embeddinggemma, arctic-embed, bge). Declare them for any other model —
+# omitting them degrades relevance silently. Changing them requires a rebuild.
+# [embed.templates.my-model]
+# document = "passage: {t}"
+# query = "query: {q}"
+
+[search]
+fusion = "score"               # "score" (cos + α·bm25/bm25_max) or "rrf"
+alpha = 0.2                    # lexical weight, natural-language question
+alpha_id = 0.5                 # lexical weight, query carrying/asking an identifier
+pool = 60                      # dense candidates
+lex_pool = 40                  # candidates added from the global BM25
+max_per_source = 2             # results per file at most (0 = unlimited)
+dedup_min_chars = 200          # identical texts at least this long are kept once
+# Words announcing an identifier lookup ("port", "domain", "container"…).
+# lookup_terms = ["port", "endpoint", "queue"]
+
+[collect]
+roots = ["."]                  # in priority order (earliest wins deduplication)
+extensions = []                # empty = every supported type
+max_file_bytes = 1048576       # text files
+max_document_bytes = 52428800  # office documents and PDF
+respect_gitignore = true
+exclude_dirs = []              # names skipped at any depth (exact)
+exclude_dir_names = ["_archive", "archive", "archives", "backup", "backups"]   # case-insensitive
+exclude_top = []               # top-level directories of the root not walked
+exclude_globs_file = ".documentumignore"
+exclude_globs = []
+own_remotes = []               # nested git repos whose remote matches none = third-party clones, skipped
+table_row_dirs = []            # tables there are also indexed row by row (+ scan.output_dir)
+
+[secrets]
+enabled = true                 # quarantine files carrying keys/tokens before indexing
+patterns = []                  # extra content regexes
+allow = []                     # globs exempted (known false positives)
+
+[code]
+# Code graph in the same SQLite file as the docs (`docs.db`).
+# Absent key = enabled. `index`, `sync` and the daemon refresh the graph only when this is true.
+enabled = true
+
+[scan]
+output_dir = "docs/generated"  # where inventories are written (indexed row by row)
+lang = "en"                    # language of generated prose: en | fr
+
+# Any command — its output becomes a dated document.
+# [[scan.source]]
+# name = "disk"
+# title = "Disk usage"
+# command = ["df", "-h"]
+# format = "code"              # "code" (wrapped) or "markdown" (as is)
+# timeout_secs = 60
+#
+# Built-in collectors (optional, declared like any source):
+# [[scan.source]]
+# name = "containers"
+# kind = "docker"              # Docker Engine socket, no CLI needed
+# socket = "/var/run/docker.sock"
+# all = false
+#
+# [[scan.source]]
+# name = "services"
+# kind = "systemd"
+# user = false                 # --user units
+# exclude = [...]              # replaces the default list of distribution services
+#
+# [[scan.source]]
+# name = "ports"
+# kind = "ports"               # listening sockets from /proc
+# udp = false
+#
+# [[scan.source]]
+# name = "projects"
+# kind = "projects"            # sub-directories and their entry document
+# dir = "~"
+# entry_files = ["README.md", "AGENTS.md", "CLAUDE.md"]
+# exclude = []
+#
+# [[scan.source]]
+# name = "scripts"
+# kind = "scripts"             # executables and their first comment line
+# dirs = ["bin"]
+
+[store]
+backend = "local"              # "local" (SQLite, exact) or "qdrant"
+mode = "owned"                 # "owned" (sync writes) or "attached" (read-only)
+url = ""
+collection = ""                # default "documentum"
+# api_key_env = "QDRANT_API_KEY"
+exact = false                  # brute force instead of the ANN index
+timeout_secs = 30
+
+# Read-only bases queried with every search (qdrant or peer documentum daemon).
+# [[store.federate]]
+# backend = "peer"
+# url = "http://other-host:7700"
+# name = "team-docs"
+# weight = 1.0
+# api_key_env = "TEAM_DOCS_TOKEN"
+
+[daemon]
+# socket = "/run/user/1000/documentum.sock"   # default: daemon.sock in the cache dir
+# http = "127.0.0.1:7700"                     # HTTP API (search/status/inventory/map/annotate)
+# http_token_env = "DOCUMENTUM_HTTP_TOKEN"
+sync_interval_secs = 0         # periodic incremental sync (0 = never)
+scan_interval_secs = 0         # periodic scan of the sources, then sync

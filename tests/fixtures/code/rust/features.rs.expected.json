@@ -1,0 +1,16 @@
+{
+  "symbols": [
+    { "qname": "Worker", "kind": "trait", "start": 4, "end": 6 },
+    { "qname": "Worker.run", "kind": "method", "start": 5, "end": 5 },
+    { "qname": "Engine", "kind": "struct", "start": 8, "end": 8 },
+    { "qname": "Engine.run", "kind": "method", "start": 12, "end": 15 },
+    { "qname": "build", "kind": "function", "start": 18, "end": 24 }
+  ],
+  "calls": [
+    { "caller": "Engine.run", "callee": "helper", "line": 13 },
+    { "caller": "Engine.run", "callee": "println", "line": 14 },
+    { "caller": "build", "callee": "log::write", "line": 22 },
+    { "caller": "build", "callee": "Engine::new", "line": 23 },
+    { "caller": "build", "callee": "value.into", "line": 23 }
+  ]
+}

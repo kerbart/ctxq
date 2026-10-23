@@ -1,0 +1,15 @@
+{
+  "symbols": [
+    { "qname": "Outer", "kind": "class", "start": 5, "end": 20 },
+    { "qname": "Outer.Inner", "kind": "class", "start": 6, "end": 13 },
+    { "qname": "Outer.Inner.render", "kind": "method", "start": 7, "end": 12 },
+    { "qname": "Outer.expression", "kind": "method", "start": 15, "end": 15 },
+    { "qname": "Outer.raw", "kind": "method", "start": 17, "end": 19 }
+  ],
+  "calls": [
+    { "caller": "Outer.Inner.render", "callee": "format", "line": 11 },
+    { "caller": "Outer.expression", "callee": "format", "line": 15 },
+    { "caller": "Outer.expression", "callee": "value.toString", "line": 15 },
+    { "caller": "Outer.raw", "callee": "trimIndent", "line": 19 }
+  ]
+}

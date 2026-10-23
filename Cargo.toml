@@ -1,0 +1,55 @@
+[package]
+name = "documentum"
+version = "3.0.1"
+edition = "2021"
+rust-version = "1.88"
+authors = ["Damien Kerbart"]
+description = "Indexing & retrieval for agents: docs (hybrid search), home-grown code graph, inventories — MCP, daemon, one binary"
+license = "MIT"
+repository = "https://github.com/kerbart/documentum"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+rusqlite = { version = "0.31", features = ["bundled", "bundled-full"] }
+pulldown-cmark = "0.11"
+ignore = "0.4"
+globset = "0.4"
+regex = "1.10"
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "io-std", "io-util", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+rayon = "1.10"
+indicatif = "0.17"
+serde_yaml = "0.9"
+sha2 = "0.10.9"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+toml = "0.8.23"
+toml_edit = "0.22.27"
+quick-xml = "0.37.5"
+# P2b: office documents (OOXML = zip + XML) and PDF text
+libc = "0.2"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+pdf-extract = { version = "0.7", optional = true }
+# Embeddings ONNX optionnels.
+fastembed = { version = "6.0.3", optional = true, default-features = false, features = ["hf-hub-rustls-tls", "ort-download-binaries-rustls-tls"] }
+# Hybrid search, BM25, embeddings
+ndarray = "0.16.1"
+ndarray-npy = { version = "0.9.1", default-features = false }
+sha1 = "0.10.6"
+ureq = { version = "2.12.1", features = ["json"] }
+
+[features]
+default = ["pdf"]
+pdf = ["dep:pdf-extract"]
+onnx-embeddings = ["dep:fastembed"]
+
+[dev-dependencies]
+tempfile = "3.10"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1

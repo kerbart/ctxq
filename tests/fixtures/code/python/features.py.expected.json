@@ -1,0 +1,11 @@
+{
+  "symbols": [
+    { "qname": "Worker", "kind": "class", "start": 4, "end": 15 },
+    { "qname": "Worker.run", "kind": "method", "start": 8, "end": 15 },
+    { "qname": "helper", "kind": "function", "start": 18, "end": 19 }
+  ],
+  "calls": [
+    { "caller": "Worker.run", "callee": "render", "line": 15 },
+    { "caller": "helper", "callee": "clean", "line": 19 }
+  ]
+}

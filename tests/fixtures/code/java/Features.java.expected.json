@@ -1,0 +1,14 @@
+{
+  "symbols": [
+    { "qname": "Result", "kind": "class", "start": 6, "end": 6 },
+    { "qname": "Features", "kind": "class", "start": 8, "end": 29 },
+    { "qname": "Features.text", "kind": "field", "start": 10, "end": 10 },
+    { "qname": "Features.Inner", "kind": "class", "start": 12, "end": 24 },
+    { "qname": "Features.Inner.map", "kind": "method", "start": 14, "end": 23 },
+    { "qname": "Features.make", "kind": "method", "start": 26, "end": 28 }
+  ],
+  "calls": [
+    { "caller": "Features.Inner.map", "callee": "Helpers.format", "line": 22 },
+    { "caller": "Features.make", "callee": "Result", "line": 27 }
+  ]
+}

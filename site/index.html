@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>documentum — a local knowledge index for AI agents, one binary</title>
+<meta name="description" content="documentum sorts and indexes your docs, office files, PDFs, live inventories and code for your AI agent: small sourced passages over MCP, no more lost context, an index that stays current. One Rust binary, local first.">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="documentum">
+<meta property="og:title" content="documentum — a local knowledge index for AI agents">
+<meta property="og:description" content="Your docs and code, sorted and indexed for your agent: sourced passages over MCP, no lost context, always current.">
+<meta property="og:url" content="https://documentum.kerliane.eu">
+<style>
+  :root{
+    --bg:#0a0a0b;--fg:#f4f4f5;--mut:#7d7d83;--accent:#e8b84a;--code:#19191c;
+    --line:rgba(255,255,255,.08);--maxw:800px;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono","JetBrains Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:clip}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:var(--sans);font-size:16px;line-height:1.6;
+    -webkit-font-smoothing:antialiased;overflow-x:clip}
+  a{color:var(--fg);text-decoration:none}a:hover{color:var(--accent)}
+  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 20px}
+  .eyebrow{font-family:var(--mono);font-size:11px;color:var(--mut);letter-spacing:.3em;text-transform:uppercase;margin:0 0 18px}
+  h1,h2,h3{font-weight:600;letter-spacing:-.02em;line-height:1.15}
+  h2{font-size:clamp(20px,3vw,26px);margin:0 0 6px}
+  h3{font-size:15px;margin:0 0 4px}
+  p{margin:0 0 14px}.mut{color:var(--mut)}.small{font-size:13.5px}
+  code{font-family:var(--mono);font-size:.92em}
+  p code,li code,td code{background:var(--code);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  .accent{color:var(--accent)}
+
+  header.site{position:sticky;top:0;z-index:20;background:rgba(10,10,11,.72);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+  .nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600}
+  .brand img{width:28px;height:28px;display:block;border-radius:7px}
+  .brand .ver{font-family:var(--mono);font-size:11px;color:var(--mut);font-weight:500;border:1px solid var(--line);border-radius:999px;padding:1px 8px}
+  .nav-links{display:flex;align-items:center;gap:22px;font-size:14px}
+  .nav-links a{color:var(--mut)}.nav-links a:hover{color:var(--fg)}.nav-links .repo{color:var(--fg)}
+  @media(max-width:560px){.nav-links .hide-sm{display:none}}
+
+  section{padding:60px 0;border-top:1px solid var(--line)}
+  section:first-of-type{border-top:0}
+  .sec-head{margin-bottom:24px}
+
+  .hero{padding:56px 0 64px}
+  .hero .wordmark{font-size:clamp(44px,10vw,80px);font-weight:700;letter-spacing:-.03em;margin:0 0 6px;line-height:1}
+  .hero .tagline{font-family:var(--mono);color:var(--mut);font-size:14px;margin:0 0 22px}
+  .hero .lede{font-size:clamp(18px,2.5vw,22px);line-height:1.5;color:#8a8a92;max-width:600px;margin-bottom:28px}
+  .hero .lede strong,.hero .lede em{color:#ffd56b;font-weight:700;font-style:normal;text-shadow:0 0 18px rgba(232,184,74,.45)}
+  .hero-note{font-size:13px;color:var(--mut);margin:12px 0 0}
+  .cta-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+
+  .tabs{display:flex;gap:4px;margin-bottom:10px}
+  .tab{font-family:var(--mono);font-size:12px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);color:var(--mut);background:transparent;cursor:pointer}
+  .tab.active{color:var(--fg);border-color:var(--accent)}
+  .tab:hover{color:var(--fg)}
+
+  .code{position:relative;background:var(--code);border:1px solid var(--line);border-radius:10px;font-family:var(--mono);font-size:13.5px;line-height:1.7;overflow:hidden}
+  .code pre{margin:0;padding:16px 52px 16px 18px;overflow-x:auto;white-space:pre}
+  .code .prompt{color:var(--accent);user-select:none}
+  .code .cmt{color:var(--mut)}
+  .code .k{color:#9cc5ff}
+  .code.hero-cmd{font-size:15px}.code.hero-cmd pre{padding:20px 56px 20px 22px}
+  .copy{position:absolute;top:9px;right:9px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+    background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:7px;color:var(--mut);cursor:pointer;transition:.15s}
+  .copy:hover{color:var(--fg);border-color:rgba(255,255,255,.2)}
+  .copy.copied{color:#7fae8a;border-color:#7fae8a}
+  .copy svg{width:15px;height:15px;display:block}
+  .btn{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:13px;padding:9px 14px;border-radius:8px;
+    border:1px solid var(--line);color:var(--mut);background:transparent;transition:.15s}
+  .btn:hover{color:var(--fg);border-color:rgba(255,255,255,.25)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+  .card{border:1px solid var(--line);border-radius:12px;padding:18px 18px 14px;background:rgba(255,255,255,.015)}
+  .card h3{display:flex;align-items:center;gap:8px}
+  .card p{margin:6px 0 0;font-size:14px;color:#b5b5bb}
+  .card .n{font-family:var(--mono);font-size:11px;color:var(--accent)}
+
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:10px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--mut);font-weight:500;font-family:var(--mono);font-size:12px;letter-spacing:.05em;text-transform:uppercase}
+  td:first-child{white-space:nowrap}
+  @media(max-width:560px){td:first-child{white-space:normal}}
+
+  .flow{font-family:var(--mono);font-size:12.5px;line-height:1.8;color:#c9c9ce;background:var(--code);border:1px solid var(--line);border-radius:10px;padding:16px 18px;overflow-x:auto;white-space:pre;margin:0}
+  .flow b{color:var(--accent);font-weight:600}
+
+  .steps{counter-reset:s;list-style:none;padding:0;margin:0}
+  .steps li{counter-increment:s;position:relative;padding-left:40px;margin-bottom:26px}
+  .steps li::before{content:counter(s);position:absolute;left:0;top:2px;width:26px;height:26px;border-radius:50%;
+    border:1px solid var(--accent);color:var(--accent);font-family:var(--mono);font-size:12px;display:flex;align-items:center;justify-content:center}
+  .steps h3{margin-bottom:8px}
+
+  footer.site{padding:36px 0 48px;border-top:1px solid var(--line);font-size:13.5px}
+  footer .row{display:flex;gap:18px;flex-wrap:wrap;color:var(--mut)}
+  .hero-art { display:block; width:100%; height:auto; margin:28px 0 8px; }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="/">
+      <img src="/favicon-32.png" srcset="/icon-64.png 2x" alt="" width="28" height="28">
+      documentum <span class="ver" id="ver">v3</span>
+    </a>
+    <nav class="nav-links">
+      <a class="hide-sm" href="#what">What</a>
+      <a class="hide-sm" href="#agents">Agents</a>
+      <a href="#install">Install</a>
+      <a class="repo" href="https://github.com/kerbart/documentum">GitHub ↗</a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">local first <span class="accent">·</span> agent first <span class="accent">·</span> one binary</p>
+    <h1 class="wordmark">documentum</h1>
+    <p class="tagline">your docs, sorted and indexed for the agent that reads them</p>
+    <p class="lede">
+      Your agent shouldn't dig through folders. documentum <strong>sorts and indexes</strong>
+      your docs and code <em>for it</em> and serves back <strong>sourced passages</strong>.
+      <strong>No lost context.</strong> <strong>Always-current docs.</strong>
+    </p>
+
+    <div class="tabs" role="tablist" aria-label="Operating system">
+      <button class="tab" data-os="linux" role="tab">Linux</button>
+      <button class="tab" data-os="mac" role="tab">macOS</button>
+      <button class="tab" data-os="win" role="tab">Windows</button>
+    </div>
+    <div class="code hero-cmd" id="hero-cmd" data-copy="curl -fsSL https://documentum.kerliane.eu/install.sh | bash">
+      <pre><span class="prompt">$ </span><span id="hero-text">curl -fsSL https://documentum.kerliane.eu/install.sh | bash</span></pre>
+      <button class="copy" aria-label="Copy command"></button>
+    </div>
+    <p class="hero-note" id="hero-note">Linux x86_64 &amp; arm64 (static), macOS Intel &amp; Apple silicon · installs to <code>~/.local/bin</code> · no root · SHA-256 verified</p>
+
+    <img class="hero-art" src="/hero.webp?v=2" alt="documentum: documents and code woven into one index" width="1595" height="720" loading="eager" onerror="this.remove()">
+
+    <div class="cta-row">
+      <a class="btn" href="#quickstart"><span class="accent">▍</span>&nbsp;quick start</a>
+      <a class="btn" href="https://github.com/kerbart/documentum/releases">releases&nbsp;→</a>
+    </div>
+  </div>
+</section>
+
+<section id="what">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">What it does</p>
+      <h2>Three engines, one index, one process</h2>
+      <p class="mut">The index is a single SQLite file next to your workspace. Everything runs on your machine; the embedding server is the only thing you may choose to make remote.</p>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="n">01</span>Hybrid document search</h3>
+        <p>Dense vectors <b>and</b> a global BM25, fused by score with identifier-aware weighting. A port number, a container name or a domain is found as reliably as a paraphrased question.</p>
+      </div>
+      <div class="card">
+        <h3><span class="n">02</span>Live inventories</h3>
+        <p>Built-in collectors for Docker, systemd, listening ports, projects and scripts — or any command's markdown output. Tables are indexed row by row: “which port does X use?” gets the row, not a page.</p>
+      </div>
+      <div class="card">
+        <h3><span class="n">03</span>Code graph</h3>
+        <p>A built-in extractor for Rust, TS/JS, Python, Go, Java, Kotlin and C#: symbols, callers and callees, bodies on demand, change impact of a diff, doc ↔ code links.</p>
+      </div>
+      <div class="card">
+        <h3><span class="n">04</span>Office &amp; PDF, natively</h3>
+        <p><code>.docx</code>, <code>.pptx</code> with speaker notes, <code>.xlsx</code>, <code>.pdf</code> are converted to markdown in-process and chunked like any other document. No Python, no external service.</p>
+      </div>
+      <div class="card">
+        <h3><span class="n">05</span>Secrets stay out</h3>
+        <p>Every file is scanned before chunking and embedding. A file holding a key is quarantined — never indexed, never served — and listed by <code>status</code>.</p>
+      </div>
+      <div class="card">
+        <h3><span class="n">06</span>Pluggable stores</h3>
+        <p>Local by default. Attach to Qdrant, federate other read-only stores or another documentum instance, weight and merge their results.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">How it fits</p>
+      <h2>Sources → chunks → lexical + dense → fused, capped, sourced</h2>
+    </div>
+<pre class="flow">files md/office/pdf   ─► sections by heading ─┐
+inventories (live)    ─► one row = one chunk   ├─► <b>BM25 global</b> (always local) ──┐
+command output        ─► markdown              │                                  ├─► <b>fusion α</b> ─► caps ─► MCP / daemon / CLI
+code                  ─► symbols + call graph  ┘   <b>vectors</b> ─► local | qdrant | peer ┘</pre>
+    <div class="grid" style="margin-top:22px">
+      <div class="card">
+        <h3>Documents</h3>
+        <p>Markdown, Word, PowerPoint (speaker notes included), Excel and PDF are converted to markdown in-process, then cut by <b>H2/H3 headings</b>. Each chunk keeps its <b>breadcrumb</b> (document &gt; section), so the path and the title are searchable too. Tables and inventories are indexed <b>one row per chunk</b>. A file whose hash and mtime are unchanged is never re-read: sync is incremental.</p>
+      </div>
+      <div class="card">
+        <h3>Code</h3>
+        <p>A generic lexer, tuned per language by a small table, feeds a <b>scope tree</b> and per-language declaration recognizers. No full AST: just what navigation needs. Output: <b>symbols</b> with their qualified name and body, <b>calls</b> resolved through imports, doc comments attached to the symbol that follows, and <b>doc ↔ code links</b>.</p>
+      </div>
+      <div class="card">
+        <h3>Ranking</h3>
+        <p>Dense cosine <b>plus</b> a global BM25 (k1 1.5, b 0.75) scaled by the query: <code>cosine + α · bm25 / bm25<sub>max</sub></code>. A query that looks like an identifier (a port, <code>name.ext</code>, <code>@scope</code>) gets α = 0.5; a natural-language question gets 0.2. Results are capped and always carry their source and line range.</p>
+      </div>
+    </div>
+    <h3 style="margin-top:30px">Measured, not guessed</h3>
+    <p class="small mut">A 100-question golden set, drawn from a real private workspace and kept out of the repository, gates every change to chunking, tokenisation, fusion, embeddings or stores. A mix of exact-identifier and natural-language questions, scored by MRR with a bootstrap confidence interval.</p>
+    <table>
+      <thead><tr><th>Configuration</th><th>MRR</th><th>hit @1</th><th>hit @5</th><th>missed</th></tr></thead>
+      <tbody>
+        <tr><td>Hybrid, embedding server (qwen3-embedding 0.6b), tuned prompt template</td><td><b>0.795</b> <span class="mut">[0.739–0.848]</span></td><td>71 %</td><td>92 %</td><td>8 / 100</td></tr>
+        <tr><td>Same, generic prompt template</td><td>0.754</td><td>67 %</td><td>88 %</td><td>12 / 100</td></tr>
+        <tr><td>Built-in embedder, fully offline (128-d)</td><td>≈ 0.51</td><td colspan="3" class="mut">works with no model server at all</td></tr>
+      </tbody>
+    </table>
+    <p class="small mut" style="margin-top:14px">Hybrid score fusion beat reciprocal rank fusion on that set. A resident daemon answers a known question in about 20 ms.</p>
+  </div>
+</section>
+
+<section id="agents">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Agent surface</p>
+      <h2>Designed for the model reading it</h2>
+      <p class="mut">Stable result schema, bounded output everywhere, one MCP server named <code>documentum</code>. The same operations exist on the CLI and on the daemon's HTTP API.</p>
+    </div>
+    <table>
+      <thead><tr><th>MCP tool</th><th>Use it for</th></tr></thead>
+      <tbody>
+        <tr><td><code>inventory(kind, filter)</code></td><td>Exact rows — which port, which container, which domain — no vector search involved.</td></tr>
+        <tr><td><code>search(query, tags, source_types, since, path_prefixes, max_chars)</code></td><td>Ranked passages with metadata and source lines.</td></tr>
+        <tr><td><code>context(query, scope, max_tokens, page)</code></td><td>Docs and code together, paged within a token budget.</td></tr>
+        <tr><td><code>map(prefix, depth)</code></td><td>One-line summary per document: read the map, open only what you need.</td></tr>
+        <tr><td><code>annotate(path, summary, tags)</code></td><td>Leave what you learned for the next agent; visible immediately.</td></tr>
+        <tr><td><code>status()</code></td><td>Freshness per source, store, quarantined and lost files.</td></tr>
+        <tr><td><code>code_symbol(name)</code></td><td>Signature, doc comment and body of a symbol.</td></tr>
+        <tr><td><code>code_callers</code> · <code>code_callees(name, depth)</code></td><td>Who calls it, what it calls — multi-hop.</td></tr>
+        <tr><td><code>code_path(from, to)</code></td><td>Shortest call chain between two symbols.</td></tr>
+        <tr><td><code>code_impact(diff | base, head)</code></td><td>Changed symbols → transitive callers → the docs that mention them.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Quick start</p>
+      <h2>Two commands</h2>
+    </div>
+    <ol class="steps">
+      <li>
+        <h3>Set up a workspace</h3>
+        <div class="code" data-copy="cd my-workspace && documentum setup">
+          <pre><span class="prompt">$ </span>cd my-workspace &amp;&amp; documentum setup   <span class="cmt"># indexes, then registers documentum in your agents</span></pre>
+          <button class="copy" aria-label="Copy command"></button>
+        </div>
+        <p class="small mut" style="margin-top:8px">Claude Code, Codex, Cursor, VS Code, Zed, Windsurf… detected and configured. Restart them once: documentum appears among their tools (<code>search</code>, <code>context</code>, <code>code_*</code>). You never start the MCP server yourself — the editor runs <code>documentum mcp</code> in the background.</p>
+      </li>
+      <li>
+        <h3>Ask it yourself</h3>
+        <div class="code" data-copy='documentum search "how do I deploy the api?"'>
+          <pre><span class="prompt">$ </span>documentum search "how do I deploy the api?"
+<span class="prompt">$ </span>documentum search "retention policy" --tag legal --type pdf --json</pre>
+          <button class="copy" aria-label="Copy command"></button>
+        </div>
+        <p class="small mut" style="margin-top:8px">The first search starts a small background daemon that keeps the index warm: milliseconds per query afterwards. Offline embedder by default — for real semantic search point it at an embedding server, see below.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Configuration</p>
+      <h2>One <code>documentum.toml</code>, nothing machine-specific in the code</h2>
+    </div>
+    <p class="mut">Put a <code>documentum.toml</code> at the root of the workspace (or point <code>$DOCUMENTUM_CONFIG</code> at one). With no file at all, documentum works offline with its built-in embedder. For real semantic search, pick one of the two:</p>
+    <h3>A local or LAN server — no credentials</h3>
+    <div class="code" data-copy='[embed]
+backend = "ollama"
+urls = ["http://gpu-box:11434", "http://localhost:11434"]
+model = "qwen3-embedding:0.6b"'>
+      <pre><span class="k">[embed]</span>
+backend = "ollama"
+urls = ["http://gpu-box:11434", "http://localhost:11434"]   <span class="cmt"># tried in order</span>
+model = "qwen3-embedding:0.6b"</pre>
+      <button class="copy" aria-label="Copy configuration"></button>
+    </div>
+    <h3>An API with a key — OpenAI or any compatible server</h3>
+    <div class="code" data-copy='[embed]
+backend = "openai"
+urls = ["https://api.openai.com"]
+model = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"'>
+      <pre><span class="k">[embed]</span>
+backend = "openai"                    <span class="cmt"># also LM Studio, vLLM, TEI, llama.cpp…</span>
+urls = ["https://api.openai.com"]
+model = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable, not the key</span></pre>
+      <button class="copy" aria-label="Copy configuration"></button>
+    </div>
+    <div class="code" data-copy='export OPENAI_API_KEY="sk-..."'>
+      <pre><span class="prompt">$ </span>export OPENAI_API_KEY="sk-..."      <span class="cmt"># in your shell profile or your secret manager</span></pre>
+      <button class="copy" aria-label="Copy command"></button>
+    </div>
+    <p class="small mut" style="margin-top:12px"><strong>The key never goes in the file.</strong> <code>documentum.toml</code> can be committed and shared; the key stays in your environment. It is sent as <code>Authorization: Bearer</code> to the embedding server only. Same pattern for Qdrant and federated peers (<code>api_key_env</code>) and the daemon's HTTP API (<code>http_token_env</code>). Remote embedding is never implicit and always bounded (<code>concurrency</code>, <code>batch</code>). <code>DOCUMENTUM_*</code> variables override the file, <code>--embeddings</code> overrides both; every key is documented in <a href="https://github.com/kerbart/documentum/blob/master/documentum.example.toml">documentum.example.toml</a>.</p>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <div class="sec-head">
+      <p class="eyebrow">Install</p>
+      <h2>Prebuilt binaries, checksum-verified</h2>
+      <p class="mut">Releases are built by GitHub Actions for every platform and published with a <code>SHA256SUMS</code> file; the installers refuse an unverified binary.</p>
+    </div>
+    <h3>Linux &amp; macOS</h3>
+    <div class="code" data-copy="curl -fsSL https://documentum.kerliane.eu/install.sh | bash">
+      <pre><span class="prompt">$ </span>curl -fsSL https://documentum.kerliane.eu/install.sh | bash</pre>
+      <button class="copy" aria-label="Copy command"></button>
+    </div>
+    <p class="small mut" style="margin-top:12px">Windows: the native build is on its way — use WSL meanwhile.</p>
+    <h3 style="margin-top:22px">From source</h3>
+    <div class="code" data-copy="cargo install --git https://github.com/kerbart/documentum.git --locked">
+      <pre><span class="prompt">$ </span>cargo install --git https://github.com/kerbart/documentum.git --locked</pre>
+      <button class="copy" aria-label="Copy command"></button>
+    </div>
+    <p class="small mut" style="margin-top:14px">Pin a release with <code>DOCUMENTUM_VERSION=v3.0.0</code>, change the destination with <code>DOCUMENTUM_BINDIR</code>.</p>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap row">
+    <span>documentum <code id="ver-foot">v3</code></span>
+    <a href="https://github.com/kerbart/documentum">source</a>
+    <a href="https://github.com/kerbart/documentum/releases">releases</a>
+    <span>MIT · Damien Kerbart</span>
+  </div>
+</footer>
+
+<script>
+  const ICON_COPY = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>';
+  const ICON_OK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  document.querySelectorAll('.copy').forEach(btn => {
+    btn.innerHTML = ICON_COPY;
+    btn.addEventListener('click', async () => {
+      const block = btn.closest('.code');
+      const text = block.getAttribute('data-copy') || block.querySelector('pre').innerText;
+      try { await navigator.clipboard.writeText(text); }
+      catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      btn.innerHTML = ICON_OK; btn.classList.add('copied');
+      setTimeout(() => { btn.innerHTML = ICON_COPY; btn.classList.remove('copied'); }, 1600);
+    });
+  });
+
+  // OS detection → the hero one-liner shows the right command; tabs override.
+  const CMDS = {
+    linux: { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+             note: 'Linux x86_64 &amp; arm64, static binary · installs to <code>~/.local/bin</code> · no root · SHA-256 verified' },
+    mac:   { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+             note: 'macOS Intel &amp; Apple silicon · installs to <code>~/.local/bin</code> · no admin rights · SHA-256 verified' },
+    win:   { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+             note: 'Windows: native build on its way — run this in WSL (Linux x86_64 binary) · SHA-256 verified' },
+  };
+  function detectOS() {
+    const ua = navigator.userAgent || '', p = navigator.platform || '';
+    if (/Windows/i.test(ua) || /Win/i.test(p)) return 'win';
+    if (/Mac|iPhone|iPad/i.test(ua) || /Mac/i.test(p)) return 'mac';
+    return 'linux';
+  }
+  function setOS(os) {
+    const c = CMDS[os];
+    document.querySelector('#hero-cmd .prompt').textContent = c.prompt;
+    document.getElementById('hero-text').textContent = c.text;
+    document.getElementById('hero-cmd').setAttribute('data-copy', c.text);
+    document.getElementById('hero-note').innerHTML = c.note;
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.os === os));
+  }
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => setOS(t.dataset.os)));
+  setOS(detectOS());
+
+  // Latest release tag (public repository only; silently keeps the fallback otherwise).
+  fetch('https://api.github.com/repos/kerbart/documentum/releases/latest', { headers: { Accept: 'application/vnd.github+json' } })
+    .then(r => r.ok ? r.json() : null)
+    .then(j => { if (j && j.tag_name) { document.getElementById('ver').textContent = j.tag_name; document.getElementById('ver-foot').textContent = j.tag_name; } })
+    .catch(() => {});
+</script>
+</body>
+</html>

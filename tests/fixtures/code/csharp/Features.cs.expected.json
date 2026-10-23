@@ -1,0 +1,15 @@
+{
+  "symbols": [
+    { "qname": "Sample", "kind": "module", "start": 4, "end": 4 },
+    { "qname": "Sample.Box", "kind": "class", "start": 6, "end": 7 },
+    { "qname": "Sample.Service", "kind": "class", "start": 9, "end": 26 },
+    { "qname": "Sample.Service._text", "kind": "field", "start": 12, "end": 12 },
+    { "qname": "Sample.Service.LoadAsync", "kind": "method", "start": 14, "end": 23 },
+    { "qname": "Sample.Service.Count", "kind": "method", "start": 25, "end": 25 }
+  ],
+  "calls": [
+    { "caller": "Sample.Service.LoadAsync", "callee": "Logger.Write", "line": 21 },
+    { "caller": "Sample.Service.LoadAsync", "callee": "ConvertAsync", "line": 22 },
+    { "caller": "Sample.Service.Count", "callee": "Measure", "line": 25 }
+  ]
+}

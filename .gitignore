@@ -1,0 +1,59 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Build
+*.o
+*.a
+*.so
+*.dylib
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+docs.db
+*.npy
+
+# Config & secrets
+documentum.toml
+.env
+.env.local
+*.pem
+*.key
+config.yml
+
+# Cache
+.cache/
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python (eval, scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Dev services
+/dev/qdrant/storage/
+.agents/*.log
+
+# Private evaluation data (describes a real workspace)
+eval/golden.jsonl
+bench/*_rows.json
+site/hero.jpg

@@ -1,0 +1,13 @@
+{
+  "symbols": [
+    { "qname": "Service", "kind": "struct", "start": 8, "end": 10 },
+    { "qname": "Service.Name", "kind": "field", "start": 9, "end": 9 },
+    { "qname": "Service.Run", "kind": "method", "start": 13, "end": 19 },
+    { "qname": "Build", "kind": "function", "start": 21, "end": 23 }
+  ],
+  "calls": [
+    { "caller": "Service.Run", "callee": "alias.Touch", "line": 17 },
+    { "caller": "Service.Run", "callee": "fmt.Sprintf", "line": 18 },
+    { "caller": "Build", "callee": "NewService", "line": 22 }
+  ]
+}

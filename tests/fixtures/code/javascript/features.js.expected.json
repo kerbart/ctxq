@@ -1,0 +1,11 @@
+{
+  "symbols": [
+    { "qname": "render", "kind": "function", "start": 3, "end": 6 },
+    { "qname": "render.text", "kind": "const", "start": 4, "end": 4 },
+    { "qname": "direct", "kind": "function", "start": 8, "end": 12 }
+  ],
+  "calls": [
+    { "caller": "render", "callee": "thing", "line": 5 },
+    { "caller": "direct", "callee": "render", "line": 11 }
+  ]
+}

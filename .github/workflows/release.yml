@@ -1,0 +1,135 @@
+# Release: on a `v*` tag, build the single binary for every platform, publish
+# the archives + SHA256SUMS as a GitHub release. `install.sh` / `install.ps1`
+# download from `releases/latest/download/<asset>` and verify the checksum.
+#
+# Cut a release with:  scripts/release.sh v2.0.1   (tags, pushes, CI does the rest)
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and publish"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  BIN: documentum
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.optional || false }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux: static musl builds (no glibc requirement), cross-compiled with zig.
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+            asset: documentum-linux-x86_64.tar.gz
+            zig: true
+          - os: ubuntu-24.04
+            target: aarch64-unknown-linux-musl
+            asset: documentum-linux-aarch64.tar.gz
+            zig: true
+          # macOS: both architectures from the Apple-silicon runner (universal SDK).
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: documentum-macos-aarch64.tar.gz
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset: documentum-macos-x86_64.tar.gz
+          # Windows: best effort until it is exercised regularly.
+          - os: windows-2022
+            target: x86_64-pc-windows-msvc
+            asset: documentum-windows-x86_64.zip
+            optional: true
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # rust-toolchain.toml pins the toolchain cargo actually uses: add the
+      # target to *that* one (the action above only knows `stable`).
+      - name: Add target
+        run: |
+          rustup target add ${{ matrix.target }}
+          rustup show active-toolchain
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cargo-zigbuild
+        if: matrix.zig
+        run: pip install --quiet ziglang cargo-zigbuild
+
+      - name: Build
+        shell: bash
+        env:
+          DOCUMENTUM_VERSION: ${{ inputs.tag || github.ref_name }}
+        run: |
+          if [ "${{ matrix.zig }}" = "true" ]; then
+            cargo zigbuild --release --locked --target "${{ matrix.target }}"
+          else
+            cargo build --release --locked --target "${{ matrix.target }}"
+          fi
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="target/${{ matrix.target }}/release"
+          mkdir -p dist
+          case "${{ matrix.asset }}" in
+            *.zip) (cd "$out" && 7z a -tzip "$GITHUB_WORKSPACE/dist/${{ matrix.asset }}" "$BIN.exe" >/dev/null) ;;
+            *)     tar -czf "dist/${{ matrix.asset }}" -C "$out" "$BIN" ;;
+          esac
+          ls -l dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/${{ matrix.asset }}
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum documentum-* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --clobber
+          else
+            gh release create "$TAG" dist/* --title "documentum $TAG" --generate-notes --latest
+          fi
