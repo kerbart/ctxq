@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # documentum installer — one binary, no runtime dependency.
-#   curl -fsSL https://documentum.kerliane.eu/install.sh | bash
+#   curl -fsSL https://documentum.dev/install.sh | bash
 #
 # Downloads the latest GitHub release for this OS/arch, verifies it against
 # the release's SHA256SUMS, installs to ~/.local/bin (no root).

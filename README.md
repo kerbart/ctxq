@@ -9,7 +9,7 @@ passages** over MCP, a resident daemon or the CLI.
 - **Always-current docs**: the index re-syncs incrementally as files change,
   and `status` tells the agent how fresh it is.
 
-![documentum: a pile of documents transformed into a structured index](https://documentum.kerliane.eu/hero-flat.webp)
+![documentum: a pile of documents transformed into a structured index](https://documentum.dev/hero-flat.webp)
 
 - **Relevant**: hybrid search — dense vectors **and** a global BM25, fused by
   score, with identifier-aware weighting. Exact identifiers (a port, a
@@ -62,13 +62,13 @@ static, macOS Intel/Apple silicon) are built by GitHub Actions and verified
 against the release's `SHA256SUMS` by the installer:
 
 ```bash
-curl -fsSL https://documentum.kerliane.eu/install.sh | bash      # Linux, macOS, WSL → ~/.local/bin
+curl -fsSL https://documentum.dev/install.sh | bash      # Linux, macOS, WSL → ~/.local/bin
 ```
 
 Native Windows build: coming soon. Use WSL meanwhile.
 
 `DOCUMENTUM_VERSION=v3.0.1` pins a release, `DOCUMENTUM_BINDIR` changes the
-destination. Project page: <https://documentum.kerliane.eu>.
+destination. Project page: <https://documentum.dev>.
 
 From source:
 

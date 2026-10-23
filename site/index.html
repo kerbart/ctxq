@@ -13,7 +13,7 @@
 <meta property="og:site_name" content="documentum">
 <meta property="og:title" content="documentum — a local knowledge index for AI agents">
 <meta property="og:description" content="Your docs and code, sorted and indexed for your agent: sourced passages over MCP, no lost context, always current.">
-<meta property="og:url" content="https://documentum.kerliane.eu">
+<meta property="og:url" content="https://documentum.dev">
 <style>
   :root{
     --bg:#0a0a0b;--fg:#f4f4f5;--mut:#7d7d83;--accent:#e8b84a;--code:#19191c;
@@ -136,8 +136,8 @@
       <button class="tab" data-os="mac" role="tab">macOS</button>
       <button class="tab" data-os="win" role="tab">Windows</button>
     </div>
-    <div class="code hero-cmd" id="hero-cmd" data-copy="curl -fsSL https://documentum.kerliane.eu/install.sh | bash">
-      <pre><span class="prompt">$ </span><span id="hero-text">curl -fsSL https://documentum.kerliane.eu/install.sh | bash</span></pre>
+    <div class="code hero-cmd" id="hero-cmd" data-copy="curl -fsSL https://documentum.dev/install.sh | bash">
+      <pre><span class="prompt">$ </span><span id="hero-text">curl -fsSL https://documentum.dev/install.sh | bash</span></pre>
       <button class="copy" aria-label="Copy command"></button>
     </div>
     <p class="hero-note" id="hero-note">Linux x86_64 &amp; arm64 (static), macOS Intel &amp; Apple silicon · installs to <code>~/.local/bin</code> · no root · SHA-256 verified</p>
@@ -325,8 +325,8 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
       <p class="mut">Releases are built by GitHub Actions for every platform and published with a <code>SHA256SUMS</code> file; the installer refuses an unverified binary.</p>
     </div>
     <h3>Linux &amp; macOS</h3>
-    <div class="code" data-copy="curl -fsSL https://documentum.kerliane.eu/install.sh | bash">
-      <pre><span class="prompt">$ </span>curl -fsSL https://documentum.kerliane.eu/install.sh | bash</pre>
+    <div class="code" data-copy="curl -fsSL https://documentum.dev/install.sh | bash">
+      <pre><span class="prompt">$ </span>curl -fsSL https://documentum.dev/install.sh | bash</pre>
       <button class="copy" aria-label="Copy command"></button>
     </div>
     <p class="small mut" style="margin-top:12px">Windows: the native build is on its way — use WSL meanwhile.</p>
@@ -365,11 +365,11 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
 
   // OS detection → the hero one-liner shows the right command; tabs override.
   const CMDS = {
-    linux: { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+    linux: { prompt: '$ ', text: 'curl -fsSL https://documentum.dev/install.sh | bash',
              note: 'Linux x86_64 &amp; arm64, static binary · installs to <code>~/.local/bin</code> · no root · SHA-256 verified' },
-    mac:   { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+    mac:   { prompt: '$ ', text: 'curl -fsSL https://documentum.dev/install.sh | bash',
              note: 'macOS Intel &amp; Apple silicon · installs to <code>~/.local/bin</code> · no admin rights · SHA-256 verified' },
-    win:   { prompt: '$ ', text: 'curl -fsSL https://documentum.kerliane.eu/install.sh | bash',
+    win:   { prompt: '$ ', text: 'curl -fsSL https://documentum.dev/install.sh | bash',
              note: 'Windows: native build on its way — run this in WSL (Linux x86_64 binary) · SHA-256 verified' },
   };
   function detectOS() {
