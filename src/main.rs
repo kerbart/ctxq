@@ -109,9 +109,9 @@ enum Commands {
     },
     #[command(about = "Converts a docx, pptx, xlsx or pdf to markdown")]
     Convert { file: PathBuf },
-    #[command(about = "Inventories and converts an intake folder (rangex)")]
+    #[command(about = "Inventories and converts an intake folder")]
     Ingest {
-        #[arg(default_value = "_vrac")]
+        #[arg(default_value = "_intake")]
         intake: PathBuf,
         #[arg(long, default_value = "context")]
         context: PathBuf,
@@ -129,7 +129,7 @@ enum Commands {
         context: PathBuf,
         #[arg(long, default_value = "pure-code")]
         profile: String,
-        #[arg(long, default_value = "_vrac")]
+        #[arg(long, default_value = "_intake")]
         intake: String,
         #[arg(long)]
         force: bool,

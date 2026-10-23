@@ -30,7 +30,7 @@ printf '\033[38;5;221m▍\033[0m \033[1mdocumentum\033[0m installer\n'
 case "$(uname -s)" in
   Linux)  os="linux" ;;
   Darwin) os="macos" ;;
-  MINGW*|MSYS*|CYGWIN*) die "on Windows use PowerShell:  irm https://documentum.kerliane.eu/install.ps1 | iex" ;;
+  MINGW*|MSYS*|CYGWIN*) die "native Windows build: coming soon. Run this installer inside WSL meanwhile." ;;
   *) die "unsupported OS: $(uname -s)" ;;
 esac
 case "$(uname -m)" in

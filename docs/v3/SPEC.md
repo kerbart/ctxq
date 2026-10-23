@@ -1,14 +1,12 @@
 # documentum v3: functional specification
 
-This document specifies **behaviours and contracts**, never the
-implementation. It covers the modules specific to documentum, listed below,
-plus the external contracts they expect from the rest of the code (to be
-reimplemented identically, behaviourally). The code graph is described in
-`docs/v3/CODEGRAPH.md`.
+This document specifies the **behaviours and contracts** of the `documentum`
+binary: what it does, not how the code is organised. The code graph is
+described in `docs/v3/CODEGRAPH.md`.
 
-Retained modules (to be read, not rewritten): `src/core/{secrets,ingest,convert,
-lexical,docmeta,settings,mdchunk,agent,embed_http,collect,doctext}.rs`,
-`src/core/sources/*`, `src/core/store/*`, `src/cli/daemon.rs`.
+Main modules: `src/core/{secrets,ingest,convert,lexical,docmeta,settings,
+mdchunk,agent,embed_http,collect,doctext}.rs`, `src/core/sources/*`,
+`src/core/store/*`, `src/cli/daemon.rs`.
 
 No machine-, model- or service-specific value in the code: everything goes
 through `documentum.toml` (documented template: `documentum.example.toml`).
@@ -17,7 +15,7 @@ through `documentum.toml` (documented template: `documentum.example.toml`).
 
 ## 1. Document pipeline
 
-### 1.1 File discovery (`[collect]`, retained module `collect.rs`)
+### 1.1 File discovery (`[collect]`, module `collect.rs`)
 
 A discovery filter resolves, from the workspace root and `[collect]`:
 
@@ -67,16 +65,14 @@ among the declared roots must be a pure function
 `(roots, relative_path) -> rank` (smaller = higher priority; not in the list =
 last rank).
 
-### 1.2 Markdown chunking: two chunkers, a single winner
+### 1.2 Markdown chunking: two chunkers
 
-There are **two** markdown splitters in the current codebase, with different
-roles. The new code must reproduce this duality:
+There are **two** markdown splitters, with different roles:
 
 **A. Primary chunker for `.md`/`.markdown` documents and converted documents
 (docx/pptx/xlsx/pdf → markdown)**. It carries the golden relevance score
-(MRR ≈ 0.79); the other one, used alone, tops out at ≈ 0.57. It is therefore a
-**critical** component, to be reimplemented EXACTLY as follows (this is a
-design choice of the project, not a detail):
+(MRR ≈ 0.79). It is therefore a **critical** component, and its behaviour is
+fixed as follows:
 
 - Splits only at **level 2 and 3** headings (`##`, `###`), detected by a
   full-line regex `^#{1,6}\s+(.*?)\s*#*$` on text **already split into logical
@@ -104,9 +100,9 @@ design choice of the project, not a detail):
   link); the chunk content is `header\nseparator\nrow` (3 lines, so the text
   stays readable on its own); `start_line`/`end_line` point at the exact data
   line. Output order: the section first, then its row chunks.
-- `symbol_references` of each chunk: result of the symbol extractor (§1.6)
+- `symbol_references` of each chunk: result of the symbol extractor (§1.3)
   applied to the chunk text.
-- `id` of each chunk: deterministic identifier (§1.6) over `(relative path,
+- `id` of each chunk: deterministic identifier (§1.3) over `(relative path,
   section title, increasing chunk index in the file)`.
 - A **chunker version** must be persisted in the index metadata (dedicated
   key): on opening, if the stored version differs from the current version (or
@@ -134,30 +130,27 @@ recognised extension, `.txt`, etc.). It must:
 - A document entirely without headings produces a single chunk
   `section_title = "Overview"`.
 - Must also provide `generate_chunk_id` and `extract_symbol_references`
-  (§1.6, shared with chunker A).
+  (§1.3, shared with chunker A).
 
-**Data contract common to both chunkers: `DocChunk`** (consumed as is by the
-retained `lexical.rs` and `mdchunk.rs`, and by the hybrid engine):
+**Data contract common to both chunkers: `DocChunk`** (consumed as is by
+`lexical.rs`, `mdchunk.rs` and the hybrid engine):
 
 | field | type | semantics |
 |---|---|---|
-| `id` | `String` | deterministic identifier, §1.6 |
+| `id` | `String` | deterministic identifier, §1.3 |
 | `source_path` | `String` | path relative to the root, `/` separators |
 | `section_title` | `String` | section title (or table cell for a row chunk) |
 | `heading_level` | `u32` | heading level (1-6; 0 for a pseudo-section) |
 | `hierarchy` | `Vec<String>` | breadcrumb, from the document to the section |
 | `content` | `String` | raw chunk text (re-rendered markdown or extracted as is, depending on the chunker) |
 | `start_line` / `end_line` | `usize` | 1-indexed, inclusive |
-| `symbol_references` | `Vec<String>` | symbol names detected in the text, normalised (§1.6) |
+| `symbol_references` | `Vec<String>` | symbol names detected in the text, normalised (§1.3) |
 
-`DocChunk` must be serialisable (JSON) and comparable by structural equality
-(useful in tests).
+`DocChunk` is serialisable (JSON) and comparable by structural equality.
 
 ### 1.3 Symbol extraction and deterministic identifiers (shared contract)
 
-Three pure functions, used by both chunkers and by the doc↔code linker (the
-linking algorithm itself is out of scope, but these functions are its raw
-material):
+Three pure functions, used by both chunkers and by the doc↔code linker:
 
 - **`symbol_ref(name) -> String`**: trim, then if the name starts with `@` and
   contains an alphanumeric `kind:` prefix (`@symbol:`, `@service: `, `@fn:`,
@@ -186,8 +179,8 @@ material):
 ### 1.4 SQLite database: logical schema (a single database for docs + code + cache)
 
 The document engine persists into a single SQLite database (`docs.db`),
-alongside the code-graph tables (out of scope here, see CODEGRAPH.md).
-Minimal logical schema to reproduce:
+alongside the code-graph tables (see CODEGRAPH.md).
+Logical schema:
 
 - **`doc_chunks`**: `id` (text primary key), `source_path`, `section_title`,
   `heading_level` (integer), `content`, `start_line` / `end_line` (integers),
@@ -242,14 +235,14 @@ external vector store.
 **Completeness accounting** (feeds `doctor`/`status`): every file seen during a
 sync must end up in one of the categories: *indexed* (≥ 1 chunk produced),
 *empty* (0 chunks, legitimately empty file), *quarantined* (secret detected,
-never chunked nor embedded; see the retained module `secrets.rs`), *unusable*
+never chunked nor embedded; see `secrets.rs`), *unusable*
 (unreadable encoding, non-convertible format...), or else *unaccounted*. That
 last category is a bug (lost document) that `doctor` must be able to report
 explicitly.
 
 ### 1.5 Document metadata and filters (`DocMeta`, `SearchFilters`)
 
-Retained module `docmeta.rs`. Data contract:
+Module `docmeta.rs`. Data contract:
 
 `DocMeta`: `title` (optional), `summary` (optional), `tags` (list, possibly
 empty), `date` (optional, `YYYY-MM-DD`, truncated to 10 characters if longer
@@ -275,16 +268,13 @@ last-modification date; neither present = filter not satisfied),
 modified)` must evaluate the four criteria independently (short-circuiting on
 the first acceptable failure).
 
-### 1.6 Hybrid search: the relevance core (P1, locked design)
+### 1.6 Hybrid search: the relevance core
 
 This is the most sensitive section: the constants and formulas below were
-measured on the golden set (`eval/golden.jsonl`, target MRR **0.793**, see §7)
-and must **not** be reinvented. They are the project's design, to be reproduced to
-the digit.
+measured on a golden set (target MRR **0.793**, see §7) and are not to be
+changed without replaying that gate.
 
-**Lexical tokenisation** (module `lexical.rs`, retained in spirit but listed as
-a derived file by this document's convention; to be reimplemented identically
-since it is what carries the score):
+**Lexical tokenisation** (module `lexical.rs`; it carries the score):
 - A token = a run matching `[a-z0-9]+(?:[._-][a-z0-9]+)*` (compound
   identifiers, case-insensitive after `lowercase`), kept **whole** if at least
   2 characters long.
@@ -313,8 +303,7 @@ since it is what carries the score):
   document). Normalising by the maximum *of the candidate pool* instead of this
   absolute ceiling would give a full bonus to a mediocre match as soon as the
   pool contains nothing better, which demotes good semantic top results. This
-  error was measured and fixed in the original design and must not be
-  reproduced.
+  error was measured and is avoided by design.
 
 **Score fusion (default mode, `[search] fusion = "score"`)**:
 ```
@@ -351,15 +340,14 @@ route to `alpha_id` even if the question itself contains no identifier: the
   further (×3) because part of the pool will be eliminated afterwards by the
   filter.
 
-**RRF mode (ablation, `[search] fusion = "rrf"`)**: to be kept as an
-alternative option, not as the default path: reciprocal rank fusion,
+**RRF mode (ablation, `[search] fusion = "rrf"`)**: an alternative option, not
+the default path: reciprocal rank fusion,
 `RRF_K = 60.0` (smoothing constant, Cormack et al. 2009), score =
 `Σ_channels channel_weight / (RRF_K + rank_in_channel + 1)`, lexical channel
 weight `FTS_CHANNEL_WEIGHT = 1.2` (dense is implicitly 1.0), candidates
-over-fetched per channel = `max(limit * 3, 20)` before fusion. Historical
-measurement: this mode drops recall@1 from 68% to 50% on the golden set (noisy
-candidates overtake good top results). Documented here so that it is never
-reintroduced as the default by mistake.
+over-fetched per channel = `max(limit * 3, 20)` before fusion. Measured on the golden set,
+this mode drops recall@1 from 68% to 50% (noisy candidates overtake good top
+results), which is why it is not the default.
 
 **Deduplication and final sort**: on equal scores, the order must be total and
 deterministic (e.g. tie-break by increasing index/identifier): two runs on the
@@ -392,14 +380,13 @@ templates; changing one without rebuilding the index must be detectable),
 `dim() -> usize`, `cosine_similarity`.
 
 - **Local (default, offline)**: deterministic hashing of character n-grams +
-  words, **128-dimension** dense vector, L2-normalised. Algorithm to be
-  reproduced exactly: for each cleaned word (alphanumeric + `_`/`.`), a word
+  words, **128-dimension** dense vector, L2-normalised. Algorithm: for each cleaned word (alphanumeric + `_`/`.`), a word
   hash weighted ±1.5 on a bucket `hash(word) mod 128` (sign drawn from a second
   hash of the word suffixed `_sign`), character trigrams each weighted ±0.5 on
   `hash(trigram) mod 128` (words ≥ 3 characters), and consecutive-word bigrams
   weighted ±1.0 on `hash(bigram) mod 128`; final vector L2-normalised (division
   by the norm if > 1e-6, otherwise zero vector). Stable identifier:
-  `"local-hash-v1-128"`, to be bumped if the hashing scheme changes. The hash
+  `"local-hash-v1-128"` (bumped if the hashing scheme changes). The hash
   used must be **deterministic across launches** (not a random per-process hash
   like Rust's default `HashMap` `SipHash`).
 - **Ollama** (`POST /api/embed`, batched) and **OpenAI-compatible**
@@ -445,10 +432,9 @@ detected on opening schedules a full re-embedding at the **next explicit
 
 ## 2. Inventories, sources, scan, ingest, convert, export-map, store, daemon
 
-This section only covers the CLI/config interface; the implementation detail of
-each of these modules (retained: `sources/*`, `ingest.rs`, `convert.rs`,
-`collect.rs`, `settings.rs`, `store/*`, `cli/daemon.rs`) is to be read in the
-code, not rewritten.
+This section covers the CLI/config interface of these features; the
+implementation detail is in the code (`sources/*`, `ingest.rs`, `convert.rs`,
+`collect.rs`, `settings.rs`, `store/*`, `cli/daemon.rs`).
 
 ### 2.1 `[[scan.source]]`: inventories
 
@@ -462,7 +448,7 @@ output wrapped in a code block; `"markdown"` = inserted as is), `intro`
 (paragraph under the title), `timeout_secs` (default 60), free options
 specific to the `kind` (flattened TOML table).
 
-Built-in kinds (no external script): `docker` (Engine socket, options
+Built-in kinds (no external program): `docker` (Engine socket, options
 `socket`, `all`), `systemd` (option `user` for `--user` units, `exclude`
 replaces the default list), `ports` (listening sockets via `/proc`, option
 `udp`), `projects` (subdirectories and their entry document, options `dir`,
@@ -476,21 +462,23 @@ continues when a source fails (the previous document stays in place, the
 failure is reported), and resyncs the index at the end of the command if
 `--sync`.
 
-### 2.2 `ingest` / `export-map`: rangex mechanics in the binary
+### 2.2 `ingest` / `export-map`: intake and organize mechanics
 
-Replaces the Python scripts of the rangex skill (`inventory.py`, `convert.py`,
-`repo_summary.py`, `build_index.py`) with the same on-disk layout and the same
-JSON: `.organizer/{inventory,mapping,conversion-log}.json`, `staging/`,
-`assets/`, `sources/`, `INDEX.md`, `INDEX.json`, `AGENTS.md`, `.gitignore`.
+These two commands turn a heap of heterogeneous files (office documents,
+minutes, mails, exports, repositories) dropped in an intake folder into a
+markdown tree plus a manifest that code agents can use. On-disk layout under
+the context folder: `.organizer/{inventory,mapping,conversion-log}.json`,
+`.organizer/staging/`, `assets/`, `sources/`, `INDEX.md`, `INDEX.json`,
+`AGENTS.md`, `.gitignore`.
 
-`documentum ingest [INTAKE=_vrac] [--context context] [--force] [--json]`:
+`documentum ingest [INTAKE=_intake] [--context context] [--force] [--json]`:
 inventory by sha256 (duplicates → the most recent wins, top-level git
-repositories detected as repos), quarantine (secret scanner + rangex name
+repositories detected as repos), quarantine (secret scanner + file-name
 heuristic + `client_secret`/`private_key` patterns, **and re-scan of the
 converted markdown**: a key in a docx is only visible after conversion),
 conversion to markdown (plain text directly; docx/pptx/xlsx/pdf via
 `convert.rs`; html and eml natively; `.doc/.ppt/.xls/.rtf/.msg/.odt` →
-**explicit** failure with a fallback message pointing to MarkItDown, never a
+**explicit** failure with a message suggesting an external converter, never a
 silently degraded conversion), front-matter stub, asset copy, per-repo pointer
 (tree, detected languages, README). **Idempotent by hash**: rerunning without
 `--force` does not reconvert what is already in `mapping.json`. JSON output
@@ -500,18 +488,15 @@ silently degraded conversion), front-matter stub, asset copy, per-repo pointer
 pairs); otherwise an equivalent text report.
 
 `documentum export-map [CONTEXT=context] [--profile pure-code|shaping|swarming]
-[--intake _vrac] [--force] [--agents-template FILE] [--json]`: builds
+[--intake _intake] [--force] [--agents-template FILE] [--json]`: builds
 `INDEX.md`/`INDEX.json`/`AGENTS.md`/`.gitignore` from the front matter of
 `<context>/sources/**/*.md` (`docmeta` reader), cross-checked against the
-recorded conversions. **Refuses to write** (exit code 1) as long as `staging/`
+recorded conversions. Known categories are `decisions`, `specs`, `meetings`,
+`mails`, `design` and `misc` (front matter `category: misc`, directory
+`sources/misc/`). **Refuses to write** (exit code 1) as long as `staging/`
 contains unclassified documents, except with `--force`: losing a document left
 in staging would otherwise be silent. JSON output: `written` (bool), `docs`,
 `categories`, `leftover_staging` (paths).
-
-Acceptance gate: on a fixed corpus (md, duplicated txt, docx, pptx+notes, xlsx,
-html, eml, rtf, png, 2 secrets, 1 repo), `inventory.json` identical to the
-original Python scripts; `INDEX.md`/`AGENTS.md`/`.gitignore` identical
-**byte for byte**; `INDEX.json` identical up to key order.
 
 ### 2.3 `convert`: office documents and PDF
 
@@ -528,7 +513,7 @@ speaker notes, a title H1 added if the document does not already provide one,
 so that the output then goes through the same markdown chunker as any `.md`
 (§1.2.A).
 
-### 2.4 `store`: external vector stores (`[store]`, retained module `store/*`)
+### 2.4 `store`: external vector stores (`[store]`, module `store/*`)
 
 Common interface (`VectorStore`, trait): `label()`, `ensure(dim)` (creates the
 collection if needed), `upsert(points)`, `delete_sources(paths)`,
@@ -555,7 +540,7 @@ external store side + number of chunks on the local index side (to spot a
 mismatch), or `backend = local : vectors in <path>` if there is no external
 store.
 
-### 2.5 `daemon`: resident process and `q` client (retained module `cli/daemon.rs`)
+### 2.5 `daemon`: resident process and `search` client (module `cli/daemon.rs`)
 
 Loading the index (chunks, vectors, inverted index) takes ≈ 1 s; a query on a
 warm index costs milliseconds. The daemon keeps a warm engine behind a Unix
@@ -565,7 +550,7 @@ default, or custom `[daemon].socket`), plus optionally a minimal HTTP API
 
 **Socket protocol**: one line = one JSON object `{"op": "...", ...}` → one
 response line `{"ok": true, "data": ...}` or `{"ok": false, "error": "..."}`.
-Operations: `search` (args = serialised `SearchArgs`, see §1.5/§4), `status`,
+Operations: `search` (args = serialised `SearchArgs`, see §1.5/§4.3), `status`,
 `inventory` (`kind`, `filter`, `limit`), `map` (`prefix`, `depth`, `limit`),
 `annotate` (`path` required, `summary`, `tags`, `author` default `"agent"`),
 `ping` (`{"pong": true, "pid": ...}`).
@@ -587,54 +572,40 @@ first real query does not pay the loading cost.
 0 = disabled): in a separate thread, on a distinct engine (queries keep being
 served during the resync), with a scan always followed by a sync.
 
-`documentum daemon [--http ADDRESS]`: refuses to start if a daemon already
-answers on the target socket, or if the index does not exist yet (invites the
-user to run `sync` first).
+`documentum daemon [--http ADDRESS] [--stop]`: refuses to start if a daemon
+already answers on the target socket, or if the index does not exist yet
+(invites the user to run `sync` first). `--stop` stops the current workspace's
+daemon.
 
-`documentum search QUESTION [-l N] [--full] [--json] [--no-daemon]` (through the daemon, started on demand; `q` = hidden alias, historical JSON output; stop with `daemon --stop`). Formerly `documentum q [QUESTION] [--k N] [--full] [--json] [--stop] [--no-daemon]
-[--tag T]... [--type T]... [--since DATE] [--path PREFIX]...`: output-compatible
-with the earlier JSON output. Starts the daemon on demand if it is not
-already there, except with `--no-daemon` (in-process search, neither starting
-nor using a daemon). `--stop` stops the current workspace's daemon. JSON
-output (v1 shape): list of objects `{rank, score, source, lines, breadcrumb,
-text, meta, origin}`.
+`documentum search QUERY [-l|--limit N] [--full] [--json] [--no-daemon]
+[--tag T]... [--type T]... [--since DATE] [--path PREFIX]...` (`--k` is an
+alias of `--limit`, default 5): goes through the daemon, started on demand,
+except with `--no-daemon` (in-process search, neither starting nor using a
+daemon). `--full` disables the truncation of passages. JSON output: see §3.
+`q` is a hidden former name of `search`, kept for scripts: `documentum q
+[QUERY] [--k N] [--full] [--json] [--stop] [--no-daemon] [--tag T]...
+[--type T]... [--since DATE] [--path PREFIX]...`, with `--stop` stopping the
+daemon and a JSON output that is a bare list of objects `{rank, score, source,
+title, breadcrumb, line_start, line_end, text}`.
 
 ---
 
-## 3. CLI: retained subcommands
+## 3. CLI: subcommands
 
-Global flags (any subcommand): `--path`/`-p` (workspace root, default current
+Top-level flags: `--path`/`-p` (workspace root, placed before the subcommand; not global because `search` has its own `--path` filter; default current
 directory), `--embeddings {local|onnx|ollama|openai}` (overrides
-`[embed].backend`).
+`[embed].backend`), `--help`, `--version`. Subcommands, in `--help` order:
 
-- **`setup`**: `--agent {all|claude|cursor|vscode|codex|gemini|antigravity|
-  windsurf|zed|claude-desktop|generic}` (default `all` = detected **project**
-  clients only; **user** clients (codex, windsurf, claude-desktop, global
-  antigravity) must be named explicitly and receive `--path <repo>` pinned in
-  their config), `--uninstall` (removes the entry instead of adding it),
-  `--skill` (installs the `documentum-investigate` skill under
-  `.claude/skills/` and `.agents/skills/`), `--command PATH` (command written
-  in the configs, default: absolute path of the current binary), `--hooks`
-  (installs a background-resync post-commit git hook, opt-in),
-  `--rules`/`--rules=false` (default true: generates/extends `AGENTS.md` +
-  per-client pointers: `CLAUDE.md`, `GEMINI.md`,
-  `.github/copilot-instructions.md`), `--in-repo` (index under `.documentum/`
-  instead of the user cache). Flow: indexing → MCP registration (see §3.1) →
-  rules-file generation → optional git hooks.
-- **`index`** / **`init`** / **`sync`**: full indexing or incremental sync of
-  the documentation and (out of scope here) the code graph. Progressive text
-  output (numbered steps), final summary (files scanned, chunks, any analysis
-  problems).
+- **`index`**: full reindex of the documentation (and, when `[code] enabled`,
+  of the code graph). Progressive text output (numbered steps), final summary
+  (files scanned, chunks, any analysis problems).
+- **`sync`**: incremental sync of the documentation (and of the code graph).
+  Same output as `index`.
 - **`doctor [--workspace NAME=PATH]... [--all]`**: health diagnostic: database
   integrity, coverage (indexed/empty/quarantined/unusable/unaccounted),
-  freshness, detected MCP registrations. Read-only.
-- **`mcp [--workspace NAME=PATH]...`** (alias `serve`): MCP server on stdio
-  (§4), launched by the client, never by hand. Several workspaces served by a
-  single process if `--workspace` is repeated; the first is the default, the
-  tools take a `workspace` parameter to target the others. `--workspace` takes
-  precedence over `--path`.
-- **`daemon [--http ADDRESS]`**: see §2.5.
-- **`q`**: see §2.5.
+  freshness (last sync). Read-only. Without `--all`, only the first
+  `--workspace` given is inspected; `--all` inspects every one.
+- **`daemon [--http ADDRESS] [--stop]`**: see §2.5.
 - **`inventory [KIND] [--filter TEXT] [--limit 50]`**: structured rows of an
   inventory (no vector search), or the list of inventories if `KIND` is
   omitted. JSON output.
@@ -648,45 +619,60 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
 - **`ingest`** / **`export-map`**: see §2.2.
 - **`scan [--only NAME]... [--sync]`**: see §2.1.
 - **`import-vectors --chunks chunks.jsonl --vectors embeddings.npy`**: seeds
-  the embedding cache from an existing documentum index (one JSON line per
-  chunk in `chunks.jsonl`: breadcrumb + text; aligned NumPy `.npy`, one row per
-  chunk): a first sync with the same model then only re-embeds what the source
-  does not cover. Fails explicitly if the counts do not match.
-- **`search QUERY [--limit 5]/[-l] [--tag T]... [--type T]... [--since
-  DATE] [--path PREFIX]... [--json]`**: direct search (§1.6). JSON:
+  the embedding cache from an existing index (one JSON line per chunk in
+  `chunks.jsonl`: breadcrumb + text; aligned NumPy `.npy`, one row per chunk):
+  a first sync with the same model then only re-embeds what the source does
+  not cover. Fails explicitly if the counts do not match.
+- **`search QUERY [-l|--limit 5] [--full] [--no-daemon] [--tag T]...
+  [--type T]... [--since DATE] [--path PREFIX]... [--json]`** (`--k` is an
+  alias of `--limit`): search (§1.6, §2.5); the limit is clamped to 1-50. JSON:
   `{query, results: [{rank, score, source, lines: [start, end], title,
   breadcrumb, text, meta, origin}]}`.
-- **`stats [--workspace FILTER] [--json] [--purge]`**: global or per-workspace
-  metrics of MCP calls (volume, success/failure, duration, estimated tokens);
-  `--purge` deletes the local telemetry database and exits.
-- **`bench`**: measures initialisation, indexing throughput, query latencies
-  (p50/p95/p99 percentiles over a panel of repeated questions).
-- **`update`**: checks whether a newer GitHub release exists (read-only,
-  network).
-- **`upgrade [--force]`**: downloads, verifies the SHA256, replaces the binary
-  in place (keeps a `.old` backup).
-- **`changes [--since REF] [--depth 2] [--max-tokens N] [--json]
-  [PATHS...]`**: symbols changed since a git reference, their callers, the
-  specs/scenarios that mention them (see §5 for the contract of the underlying
-  code graph; the extraction algorithm is out of scope, but the *shape* of this
-  command (git diff → touched symbols → transitive callers → affected docs) is
-  to be kept).
-- **`explore SYMBOL [--max-tokens N]`**: signature, doc, file/line, callers,
-  callees, body (truncated to the token budget with an explicit truncation
-  indication). Contract identical to the MCP tool `explore_code` (§4), exposed
-  on the CLI for scripted use outside MCP.
-- **`context QUERY [--scope auto|docs|code]`**: contract identical to the MCP
-  tool `get_context` (§4), same scope and budget logic, exposed on the CLI.
+- **`mcp [--workspace NAME=PATH]...`** (alias `serve`): MCP server on stdio
+  (§4), launched by the client, never by hand. Several workspaces served by a
+  single process if `--workspace` is repeated; the first is the default, the
+  tools take a `workspace` parameter to target the others. `--workspace` takes
+  precedence over `--path`.
+- **`setup [--client CLIENT]... [--uninstall] [--command PATH] [--rules[=false]]
+  [--skill] [--hooks] [--in-repo]`**: registers the MCP server with clients
+  (§3.1). `--client` (alias `--agent`, repeatable) takes `all` or a client
+  identifier: `claude`, `cursor`, `vscode`, `gemini`, `antigravity`, `zed`,
+  `generic`, `antigravity-user`, `codex`, `windsurf`, `claude-desktop`. The
+  default `all` covers detected **project** clients only; **user** clients
+  (`antigravity-user`, `codex`, `windsurf`, `claude-desktop`) must be named
+  explicitly and receive `--path <repo>` pinned in their config.
+  `--uninstall` removes the entry instead of adding it; `--command PATH` is
+  the command written in the configs (default: absolute path of the current
+  binary); `--rules` (default true, `--rules=false` to skip) generates or
+  extends `AGENTS.md` plus per-client pointers (`CLAUDE.md`, `GEMINI.md`,
+  `.github/copilot-instructions.md`); `--skill` installs the
+  `documentum-investigate` skill under `.claude/skills/` and
+  `.agents/skills/`; `--hooks` installs a background-resync post-commit git
+  hook (opt-in); `--in-repo` puts the index under `.documentum/` instead of
+  the user cache. Flow: indexing → MCP registration → rules-file generation →
+  optional skill and git hook.
+- **`changes [PATHS...] [--base REF] [--head REF] [--depth 2] [--json]`**:
+  impact of a diff: symbols touched, their transitive callers (depth clamped
+  to 1-5), and the document passages that mention them (see §5). The diff is
+  `git diff -U0 BASE HEAD -- PATHS` if `--base` is given (`--head` defaults to
+  `HEAD`); otherwise a diff piped on stdin, filtered by `PATHS`; otherwise
+  `HEAD~1` against `--head`/`HEAD`. Text output lists touched symbols, callers,
+  documents, and files unknown to the graph; `--json` prints the full report.
+  Requires an existing index.
+- **`explore SYMBOL [--depth 1] [--max-tokens 2000] [--json]`**: signature,
+  doc, file/lines, body (truncated to the token budget with an explicit
+  truncation notice), callers and callees (depth clamped to 1-5), and the
+  document passages that mention the symbol. Several matches → a candidate
+  list. Requires an existing index.
+- **`context QUESTION [--scope auto|docs|code] [--max-tokens 2000] [--page 1]
+  [--json]`**: same behaviour as the MCP tool `context` (§4.3), exposed on the
+  CLI. Text output starts with a ledger line (page, tokens, more pages?),
+  then one block per entry.
+- **`stats [-w|--workspace FILTER] [--json] [--purge]`**: global or
+  per-workspace metrics of MCP calls (volume, success/failure, duration,
+  estimated tokens); `--purge` deletes the local telemetry database and exits.
 
-**Maintenance companions not explicitly listed in the scope but with no
-dependency on abandoned features** (to keep if practical, otherwise to merge
-into `sync`): `hook [--uninstall]` (installs/removes the post-commit git hook,
-used by `setup --hooks`), `watch [--interval 1500]` (file watching +
-automatic resync in a loop).
-
-**Explicitly abandoned** (depend on removed scope, §4): the `check`
-subcommand (spec↔code alignment: BPMN/OpenAPI/Gherkin/APIM/DMN) and the
-`architecture` subcommand (HTTP routes, BPMN workflows, hotspots, modules).
+A hidden subcommand `q` is the former name of `search` (§2.5).
 
 ### 3.1 `setup`: MCP registration per client
 
@@ -696,8 +682,7 @@ arguments include `["mcp", "--path", "<absolute-repo>"]`; for a **project**
 client, only `["mcp"]` (the client launches from the project directory). An
 environment variable `DOCUMENTUM_CLIENT` (value = client identifier, e.g.
 `"claude-code"`, `"cursor"`, `"vscode"`, `"gemini-cli"`, `"antigravity"`,
-`"codex"`, `"windsurf"`, `"claude-desktop"`, `"zed"`) is added to the entry, so
-that the server can adapt its output dialects per client.
+`"codex"`, `"windsurf"`, `"claude-desktop"`, `"zed"`) is added to the entry.
 
 | Client | Scope | Config file | Root key | Entry shape |
 |---|---|---|---|---|
@@ -724,10 +709,10 @@ timestamped **backup** is written under the workspace cache
 (`<cache>/backups/<file-name>.<timestamp>.bak`); a rerun that changes nothing
 touches neither the file nor the backups. `--uninstall` removes only the
 `documentum` key and leaves the rest intact. "Client present" detection (for
-`--agent all`) by a marker specific to each project client (`.cursor/`,
+`--client all`) by a marker specific to each project client (`.cursor/`,
 `.vscode/`, `.zed/`, `.gemini/`, `.agents/` directory, or presence of the
 config file itself); user clients are **never** auto-detected by
-`--agent all`, only named explicitly: a global config is not touched without
+`--client all`, only named explicitly: a global config is not touched without
 being asked for by name.
 
 Rules files (pointer to `AGENTS.md`, added only if absent from the file):
@@ -772,171 +757,158 @@ Windsurf, Claude Desktop.
 
 ### 4.2 Workspace selection
 
-Every tool (except `list_workspaces`) accepts an optional `workspace` parameter
-(string). Not provided or empty → default workspace (the first declared at
-server startup, §3 `serve --workspace`). A name matching no known workspace →
-explicit error listing the available names.
+Every tool accepts an optional `workspace` parameter (string). Not provided or
+empty → default workspace (the first declared at server startup, `mcp
+--workspace`). A name matching no known workspace → explicit error listing the
+available names.
 
-### 4.3 Retained tools: full contracts
+### 4.3 Tools
 
-**`get_context`**: specs + code co-retrieval in one round trip, the main entry
-tool.
-- Input: `query` (string, required), `scope` (`"auto"`|`"docs"`|`"code"`,
-  default `"auto"`), `max_tokens` (integer, default 2000), `format`
-  (`"json"`|`"markdown"`, default `"json"`), `page` (integer, default 1),
-  `workspace` (optional).
-- Output (JSON): `specifications[]` (`source`, `section`, `text`),
-  `code_symbols[]` (`symbol`, `file`, `line`, `kind`, `callers[]`,
-  `callees[]`, `signature`, `snippet`), `ledger` (`current_page`,
-  `total_pages`, `total_specifications`, `total_symbols`, `has_more`,
-  `tokens_used`, `token_budget`, `excluded_entities[]` with `fetch_command` to
-  retrieve what was cut, `next_page_command`), `truncated` (bool). Dynamic
-  budgeting: specs and symbols share the token budget (a share reserved for
-  specs when both are present), an exceeded budget excludes entries rather than
-  truncating them bluntly, and says how to retrieve them afterwards.
+The server exposes exactly twelve tools: six on the code graph (`code_*`) and
+six on the documentation index. Token budgets use the ratio of about 4
+characters per token. Whenever a budget cuts an output, the result says so
+(`truncated`, `*_omitted` counters, `hint`).
 
-**`search_docs`**: hybrid search over the specs (§1.6).
-- Input: `query` (required), `limit` (default 5), `tags[]`, `source_types[]`,
-  `since`, `path_prefixes[]` (= `SearchFilters`, §1.5), `max_chars` (default 0
-  = no truncation), `workspace`.
-- Output: list of `{path, line, section, text, score, tags[], source_type,
-  modified}`.
+**`search`**: hybrid search over the documentation (§1.6).
+- Input: `query` (required), `limit` (default 5, clamped to 1-50), `tags[]`,
+  `source_types[]`, `since`, `path_prefixes[]` (= `SearchFilters`, §1.5),
+  `max_chars` (default 0 = no truncation; bounds the serialised size of the
+  results), `workspace`.
+- Output: `{query, results[]}`, each result `{rank, score, source, lines:
+  [start, end], title, breadcrumb, text, meta, origin}` plus the aliases
+  `path` (= `source`), `line` (= first line) and `section` (= `title`);
+  `truncated: true` if `max_chars` cut the list.
 
-**`explore_code`**: surgical inspection of a symbol (extraction itself is out
-of scope, see CODEGRAPH.md, but the tool's I/O contract is specified here).
-- Input: `symbol` or `query` (at least one), `depth` (1-3, default 1),
-  `max_tokens` (default 2000), `start_line`/`end_line` (optional body window),
+**`context`**: documents and code retrieved together in one round trip, with
+a token budget and pagination.
+- Input: `query` (required), `scope` (`"auto"`|`"docs"`|`"code"`, default
+  `"auto"`; anything else is an error), `max_tokens` (default 2000), `page`
+  (default 1), `workspace`.
+- Entries: unless `scope` is `code`, the 12 best document passages (search
+  results with `type: "specification"`); unless `scope` is `docs`, up to 12
+  code symbols matching the query or one of its identifier-like words
+  (`type: "code_symbol"`: `symbol`, `file`, `line`, `kind`, `signature`,
+  `doc_comment`, `snippet` (first 40 lines of the body), `callers[]`,
+  `callees[]`).
+- Output: `entries[]` (the current page), `ledger` (`current_page`,
+  `total_pages`, `total_entries`, `has_more`, `tokens_used`, `token_budget`,
+  `excluded_entities[]` listing each later page with its `count` and a
+  `fetch_command`, `next_page_command`), `truncated` (true when more pages
+  exist). Entries are packed greedily into pages that fit the budget: an
+  entry is never cut in two, and each page holds at least one entry.
+
+**`inventory`**, **`map`**, **`status`**, **`annotate`**: same contracts as
+the homonymous CLI subcommands (§3), with the additional `workspace`
+parameter. `inventory`: `kind`, `filter`, `limit` (default 50). `map`:
+`prefix`, `depth` (default 2), `limit` (default 200). `annotate`: `path`
+(required), `summary`, `tags[]`, `author` (default `cli`).
+
+**`code_symbol`**: resolves a symbol by name (exact, then terminal qualified
+name, then prefix, then case-insensitive).
+- Input: `name` (required), `max_tokens` (default 2000), `start_line` /
+  `end_line` (optional body window), `workspace`.
+- Output: `symbol` (qualified name), `name`, `kind`, `lang`, `file`,
+  `start_line`, `end_line`, `signature`, `doc_comment`, `body_snippet`, and,
+  if the body was truncated, `body_lines_omitted` and `hint`.
+- No match → tool error. Several matches → a non-error result `{ambiguous:
+  true, query, candidates[]}` (each `symbol`, `name`, `kind`, `file`, `line`,
+  `reason`).
+
+**`code_callers`** / **`code_callees`**: callers (resp. callees) of a symbol,
+breadth-first, never revisiting a node.
+- Input: `name` (required), `depth` (1-3, default 1), `max_tokens` (default
+  2000), `workspace`.
+- Output: `symbol`, `direction` (`callers`|`callees`), `depth`, `edges[]`,
+  `ambiguous_calls[]`; if cut by the budget, `truncated`, `edges_omitted`,
+  `hint`. Same ambiguity behaviour as `code_symbol`.
+
+**`code_path`**: shortest call path between two symbols (forward edges only).
+- Input: `from`, `to` (required), `max_depth` (default 5, clamped to 1-10),
+  `max_tokens` (default 2000), `workspace`.
+- Output: `{reachable: false, from, to, max_depth}`, or `{reachable: true,
+  from, to, distance, steps[]}` (with `truncated`, `steps_omitted` if cut).
+
+**`code_impact`**: impact of a diff.
+- Input: `diff` (a `git diff -U0` text), or `base` (default `HEAD~1`) and
+  `head` (default `HEAD`) from which the tool runs `git diff -U0` itself;
+  `depth` (1-5, default 3), `max_tokens` (default 3000), `workspace`.
+- Output: `depth`, `touched[]` (symbols touched by the changed line ranges),
+  `transitive_callers[]`, `unresolved_files[]` (paths the graph does not
+  know); if cut, `truncated`, `touched_omitted`, `callers_omitted`.
+
+**`code_sync`**: reindexes the code graph.
+- Input: `paths[]` (relative paths; omit for a full resync of the tree),
   `workspace`.
-- Output: symbol object (`symbol`, `kind`, `file`, `line`, `end_line`,
-  `signature`, `doc_comment`, `body_snippet`, `body_lines_omitted` if truncated
-  with `hint`), `caller_edges[]`, `callee_edges[]`, `mentioned_in[]` (doc
-  passages referencing this symbol: doc↔code link, §5). No exact match → list
-  of candidates (`symbol`, `file`, `line`, `reason`) rather than a flat error.
+- Output: `{mode: "full", report}`, or for a targeted run `{mode: "partial",
+  requested, extracted, removed, skipped_unsupported_extension, errors[]}`
+  (created or modified files are re-extracted, missing ones are removed).
 
-**`explore_graph`**: call paths and multi-symbol impact.
-- Input: `query` (required, symbols/files separated by spaces or a free
-  question), `max_files` (default 12, max 50), `depth` (1-3, default 3),
-  `max_tokens` (default 4000), `format` (`markdown`|`json`, default
-  `markdown`), `workspace`.
-- Output: `matched_symbols[]`, `files_with_source[]` (bodies grouped by file,
-  progressive truncation beyond the budget), `call_paths[]` (`steps[]`,
-  `distance`), `impact[]` (`symbol`, `transitive_callers`,
-  `kind: query_target|intermediate|impacted`).
+### 4.4 Out of scope
 
-**`batch_resolve_symbols`**: grouped resolution.
-- Input: `symbols[]` (required), `depth` (1-3, default 1), `max_tokens`
-  (default 2000, **shared equally** among the symbols), `workspace`.
-- Output: object keyed by symbol name, value = symbol object (same shape as
-  `explore_code`) or `null` if unresolved.
-
-**`reindex_delta`**: incremental reindexing after file modifications (the
-algorithm is out of scope, the I/O contract is specified).
-- Input: `files[]` (relative paths, required), `workspace`.
-- Output: `status`, `reindexed_files`, `total_files`, `total_symbols`,
-  `is_incremental`, `parse_issues[]` (`file`, `reason`, `severity`).
-
-**`detect_changes`**: impact of a git diff (contract retained; symbol
-resolution algorithm out of scope).
-- Input: `since` (git ref, default merge-base with the default branch,
-  otherwise `HEAD~1`), `paths[]` (`git diff --` filter), `depth` (1-5, default
-  2), `max_tokens`, `format` (`markdown`|`json`), `workspace`.
-- Output: `changed_symbols[]`, `impacted_symbols[]` (with `distance`),
-  `affected_docs[]` (doc passages whose `symbol_references` intersect a touched
-  symbol).
-
-**`list_workspaces`**: no parameters (it takes no `workspace`, it does not need
-one). Output: list of `{name, root, default, files, symbols, doc_chunks}`.
-
-**`inventory`**, **`map`**, **`status`**, **`annotate`**: same contracts as the
-homonymous CLI subcommands (§3), also exposed over MCP with the additional
-`workspace` parameter.
-
-### 4.4 ABANDONED tools and scopes
-
-Do **not** reimplement:
-
-- **`check_alignment`**: spec↔code conformance (BPMN jobs vs workers,
-  OpenAPI/AsyncAPI operations vs handlers, Gherkin steps vs step definitions,
-  APIM backends vs OpenAPI servers, DMN decisions vs `evaluateDecision`).
-- **`get_architecture`**: mapping (HTTP routes aggregated from OpenAPI +
-  Express/Spring/ASP.NET/FastAPI/... handlers, BPMN workflows, call hotspots,
-  modules).
-- Any tool or parameter tied to **antigravity** beyond its status as a standard
-  MCP client (§3.1): no special handling in the protocol itself.
-- Anything that treats **OpenAPI, AsyncAPI, GraphQL, Prisma, BPMN, DMN,
-  Gherkin, Terraform, APIM** as first-class formats of the graph or of a
-  dedicated tool.
-- A dedicated MCP tool exposing raw **HTTP routes**, infra **manifests**,
-  **telemetry**, or raw **analysis problems** (`parse_issues`): the latter
-  mechanism remains used **internally** to feed `status`/`doctor` (§1.4); it
-  simply has no dedicated MCP tool for raw consultation.
+The server has no tool for spec↔code conformance checks, architecture
+mapping, raw HTTP routes, infrastructure manifests, telemetry or raw analysis
+problems, and the code graph does not treat OpenAPI, AsyncAPI, GraphQL,
+Prisma, BPMN, DMN, Gherkin, Terraform or APIM files as first-class formats.
+Analysis problems are only used internally to feed `status` and `doctor`.
+MCP clients are all handled alike (§3.1): no protocol-level special case for
+any of them.
 
 ---
 
 ## 5. Code graph: external interface only
 
-The extraction algorithm is **out of scope for this document**: it is already
-specified in `docs/v3/CODEGRAPH.md` (generic lexer + scope tree + per-language
-recognizers, `src/code/model.rs` contract: `Lang`, `SymbolKind`, `Symbol`,
-`Call`, `Import`, `FileOutline`, `extract(lang, source) -> FileOutline`,
-`EXTRACTOR_VERSION`). This document only recalls the **questions** the graph
-must be able to answer, for consistency with sections 1-4 above:
+The extraction algorithm is specified in `docs/v3/CODEGRAPH.md` (generic lexer
++ scope tree + per-language recognizers, `src/code/model.rs` contract: `Lang`,
+`SymbolKind`, `Symbol`, `Call`, `Import`, `FileOutline`, `extract(lang, source)
+-> FileOutline`, `EXTRACTOR_VERSION`). This document only recalls the
+**questions** the graph answers, for consistency with sections 1-4:
 
 - Resolve a **symbol by name** (exact, then terminal qualified name, then
   prefix, then case-insensitive) → its signature, its doc, its file/lines, its
-  source body.
+  source body (`code_symbol`, `explore`).
 - List the **callers** and **callees** of a symbol, to a bounded depth, without
-  revisiting a node (breadth-first walk).
+  revisiting a node (breadth-first walk) (`code_callers`, `code_callees`).
 - Find the **shortest call path** between two symbols, with a bounded maximum
-  depth.
+  depth (`code_path`).
 - Assess the **impact of a git diff** (`git diff -U0`): touched files/lines →
-  affected symbols → their transitive callers (default depth 3) → documents
-  that mention them.
+  affected symbols → their transitive callers → (CLI `changes` only) the
+  documents that mention them (`code_impact`, `changes`).
 - Find the **doc↔code links**: documentation passages whose `symbol_references`
   (§1.3) match the name or qualified name of a symbol.
 
 See `docs/v3/CODEGRAPH.md` for the storage detail (`code_files`,
 `code_symbols`, `code_calls`, `code_imports`), the `callee → callee_id`
-resolution, and the robustness requirements (`extract` total, never panics,
-linear in input size, < 50 ms for 1 MB in release).
+resolution, and the robustness requirements.
 
 ---
 
 ## 6. Distribution: one-line install
 
-Behaviour to keep identical (scripts already correct, no design rewrite):
-
-- **`install.sh`** (POSIX sh) / **`install.ps1`** (PowerShell): OS/architecture
-  detection (Linux x86_64/aarch64 → static musl, macOS aarch64/x86_64, Windows
-  x64 `.zip` best-effort), download of the asset of the latest GitHub release
-  (or of a tag pinned via `DOCUMENTUM_VERSION`), **mandatory SHA256
-  verification** against the `SHA256SUMS` published in the release (refuses to
-  install an unverified binary if `SHA256SUMS` is missing or does not cover the
-  asset), installation into `~/.local/bin` by default (`DOCUMENTUM_BINDIR` to
-  override), without `sudo` unless the target directory is not writable by the
-  user. **Private repository**: `GH_TOKEN`/`GITHUB_TOKEN` required to resolve
-  assets through the GitHub API (the direct download URLs
-  `releases/latest/download/...` do not work on a private repository without a
-  token). Fallback if the download fails and `cargo` is available:
-  `cargo install --git` from the source repository.
+- **`install.sh`** (POSIX sh): OS/architecture detection (Linux and macOS,
+  x86_64 and aarch64; anything else is refused), download of the asset of the
+  latest GitHub release (or of a tag pinned via `DOCUMENTUM_VERSION`),
+  **mandatory SHA256 verification** against the `SHA256SUMS` published in the
+  release (refuses to install an unverified binary if `SHA256SUMS` is missing
+  or does not cover the asset), installation into `~/.local/bin` by default
+  (`DOCUMENTUM_BINDIR` to override), without root. `GH_TOKEN`/`GITHUB_TOKEN` is
+  only needed for private forks or to lift API rate limits. Fallback if the
+  download fails and `cargo` is available: `cargo install --git` from the
+  source repository.
 - **`scripts/release.sh vX.Y.Z`**: checks that the working tree is clean, that
   `Cargo.toml` already carries version `X.Y.Z` (otherwise refuses and asks to
   bump `Cargo.toml`/`Cargo.lock` first), creates an annotated tag and pushes
   it; everything else (build, publication) is delegated to the GitHub action
   triggered by the tag.
 - **`.github/workflows/ci.yml`**: `cargo test --release --locked` on push to
-  the main branch and on every PR.
+  `master` and on every pull request.
 - **`.github/workflows/release.yml`**: triggered on a `v*` tag (or manually
   with an existing tag). Matrix: Linux x86_64/aarch64 (`cargo zigbuild`, static
-  musl target, no glibc dependency), macOS aarch64/x86_64 (Apple silicon
-  runner, universal SDK), Windows x64 (`continue-on-error: true`, best effort,
-  not yet exercised regularly). Build variables injected into the binary:
-  `DOCUMENTUM_VERSION`/`DOCUMENTUM_TARGET`/`DOCUMENTUM_PROFILE`/
-  `DOCUMENTUM_RUSTC` (read by `build.rs`/`lib.rs`, exposed by
-  `documentum --version`/`long_version()`). Packaging: `.tar.gz` (Unix) or
-  `.zip` (Windows). Publication: `sha256sum` over all artifacts →
-  `SHA256SUMS`, upload to the GitHub release (created if absent, `--clobber`
-  otherwise, `--generate-notes --latest`).
+  musl target, no glibc dependency) and macOS aarch64/x86_64 (built on an
+  Apple silicon runner). The build injects `DOCUMENTUM_VERSION`; `build.rs`
+  exposes the target triple as `DOCUMENTUM_TARGET`, both shown by
+  `documentum --version`. Packaging: `.tar.gz`. Publication: `sha256sum` over
+  all artifacts → `SHA256SUMS`, upload to the GitHub release (created if
+  absent, `--clobber` otherwise, `--generate-notes --latest`).
 
 ---
 
@@ -944,65 +916,45 @@ Behaviour to keep identical (scripts already correct, no design rewrite):
 
 ### 7.1 Relevance gate (never ship a silent regression)
 
-Reference: `docs/ROADMAP.md`, explicit gate in the repository's `CLAUDE.md`:
-**`bench/eval_docs.py`** . Any change touching chunking, tokenisation, fusion,
-embeddings or stores must replay this gate and report the MRR before/after, not
-a "looks better" judgement.
+Reference: `docs/ROADMAP.md`, and the gate stated in the repository's
+`CLAUDE.md`: **`bench/eval_docs.py`**. Any change touching chunking,
+tokenisation, fusion, embeddings or stores must replay this gate and report
+the MRR before/after, not a "looks better" judgement.
 
-- Dataset: `eval/golden.jsonl` (format: one JSON line per question,
-  `{"q": "...", "expect": [substrings, one is enough]}` or
+- Dataset: a private golden set (`eval/golden.jsonl`, ignored by git, or the
+  file named by `$DOCUMENTUM_GOLDEN`; format in `eval/README.md`): one JSON
+  line per question, `{"q": "...", "expect": [substrings, one is enough]}` or
   `{"q": "...", "all": [substrings, all must co-occur in the same chunk:
-  source + breadcrumb + text]}`, `"kind"`: `exact` or `semantic`). Currently
-  100 questions (60 identifiers / 40
-  semantic; the file has grown since). A result "matches" at rank k if one (or
-  all, depending on `expect`/`all`) of the expected substrings appears,
-  case-insensitively, in the concatenated `source + breadcrumb + text` of one
-  of the top k results.
+  source + breadcrumb + text]}`, `"kind"`: `exact` or `semantic`, `"split"`:
+  `dev` or `test`. The reference set holds 100 questions (60 identifiers / 40
+  semantic). A result "matches" at rank k if one (or all, depending on
+  `expect`/`all`) of the expected substrings appears, case-insensitively, in
+  the concatenated `source + breadcrumb + text` of one of the top k results.
 - Metrics: MRR (mean reciprocal rank of the first relevant result) and
   recall@1/@5, with a 90% bootstrap confidence interval.
 - **Threshold to hold: MRR ≥ 0.793** on the frozen reference corpus (golden set
-  against the Rust index, embedding backend `ollama`/`qwen3-embedding:0.6b`;
-  the `local` backend alone does **not** hold this threshold, 0.51 measured:
-  the score fuser assumes a real semantic model on the other side). 0 rank
-  divergence expected between a correct implementation and the v2 reference on
-  these 100+ questions, since chunker, BM25 and fusion are a frozen design
-  (§1.2, §1.6), not an open search space.
+  against the index, embedding backend `ollama`/`qwen3-embedding:0.6b`; the
+  `local` backend alone does **not** hold this threshold, about 0.51 measured:
+  the score fuser assumes a real semantic model on the other side). No rank
+  divergence is expected on these 100 questions for a change that leaves
+  chunker, BM25 and fusion untouched (§1.2, §1.6).
 - Usage: `bench/eval_docs.py [--engines next] [--corpus /tmp/...] [-v]`
-  compares several engines on the same question set and the same frozen
-  corpus; `-v` details each failing question.
+  replays the question set on the frozen corpus; `-v` details each failing
+  question.
 
-### 7.2 Tests to keep (`tests/*.rs`)
+### 7.2 Tests (`tests/*.rs`)
 
-They keep their meaning within the retained scope (to be adapted to the new
-internal signatures, but the **tested scenario remains valid**):
-
-- `tests/documents_test.rs`: P2b: office documents searchable, front matter
-  drives the filters, every file accounted for
-  (indexed/empty/quarantined/unusable).
-- `tests/secrets_test.rs`: P2: no secret ever reaches the index (trap set
+- `tests/documents_test.rs`: office documents searchable, front matter drives
+  the filters, every file accounted for (indexed/empty/quarantined/unusable).
+- `tests/secrets_test.rs`: no secret ever reaches the index (trap set
   deliberately).
-- `tests/ingest_test.rs`: rangex mechanics: `ingest` (inventory + conversion +
+- `tests/ingest_test.rs`: intake mechanics: `ingest` (inventory + conversion +
   repo pointers, secrets quarantined, idempotence), `export-map`
   (INDEX/AGENTS/.gitignore from the front matter, refusal as long as
   `staging/` is not empty).
-- `tests/daemon_test.rs`: P4: `q` starts the daemon on demand, answers through
-  it, the HTTP API serves peers, `--stop` stops it (local embedder, no
-  network).
-- `tests/scale_benchmark.rs`: for the part that exercises `run_bench` and the
-  document engine (the `CodeGraph`/`ContextGateway` part is to be rewritten
-  against the new graph interfaces, §5).
-- `tests/pagination_test.rs` and `tests/integration_test.rs`: for the part that
-  exercises `DocEngine`, `run_doctor`/`run_sync`/`run_setup`, `McpServer` (the
-  pagination of `get_context`, §4.3, and the end-to-end CLI/MCP flows remain
-  behaviour to verify; the dependency on `CodeGraph`/`ContextGateway` is to be
-  rewritten against the new interfaces).
-
-To **abandon** (they depend on removed scope): `tests/alignment_test.rs`
-(`check_alignment`, DMN), `tests/disambiguation_test.rs` (internal to the old
-`CodeGraph`), `tests/telemetry_test.rs` (MCP telemetry abandoned as a
-dedicated tool, §4.4), `tests/cucumber.rs` + `tests/features/
-context_retrieval.feature` (Gherkin/BPMN out of scope, even though the
-underlying business scenario, `get_context` co-retrieval, remains; a new,
-simpler test is enough), `tests/accuracy_eval.rs` (to be replaced by the native
-Rust equivalent of `bench/eval_docs.py` if desired, but not to be ported as is
-given its dependency on the old `ContextGateway`).
+- `tests/daemon_test.rs`: `search` starts the daemon on demand and answers
+  through it, the HTTP API serves peers, `daemon --stop` stops it (local
+  embedder, no network).
+- `tests/end_to_end.rs`: end-to-end CLI and MCP flows.
+- Unit tests next to the code cover the rest (chunking, lexical scoring,
+  settings, setup merges, MCP tools and protocol).

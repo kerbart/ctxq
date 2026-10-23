@@ -1,6 +1,6 @@
 //! Per-document metadata: front matter of the file, plus agent annotations.
 //!
-//! The front matter schema is rangex's (`title`, `summary`, `tags`, `date`,
+//! The front matter schema used by `ingest` (`title`, `summary`, `tags`, `date`,
 //! `source_type`, `category`). It makes results self-describing (an agent can
 //! decide from the summary whether to open a file) and searchable by facet
 //! (`tags`, `source_type`, `since`).
@@ -332,7 +332,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reads_rangex_front_matter() {
+    fn reads_ingest_front_matter() {
         let md = "---\ntitle: \"Deck Kickoff\"\nsource_type: pptx\ndate: 2026-06-20\nsummary: Kickoff du projet.\ntags: [auth, pricing]\ncategory: specs\n---\n# Body\n";
         let m = from_content("context/sources/specs/kickoff.md", md);
         assert_eq!(m.title.as_deref(), Some("Deck Kickoff"));

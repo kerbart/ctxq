@@ -1,5 +1,5 @@
 # Release: on a `v*` tag, build the single binary for every platform, publish
-# the archives + SHA256SUMS as a GitHub release. `install.sh` / `install.ps1`
+# the archives + SHA256SUMS as a GitHub release. `install.sh`
 # download from `releases/latest/download/<asset>` and verify the checksum.
 #
 # Cut a release with:  scripts/release.sh v2.0.1   (tags, pushes, CI does the rest)
@@ -25,7 +25,6 @@ jobs:
   build:
     name: ${{ matrix.asset }}
     runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.optional || false }}
     strategy:
       fail-fast: false
       matrix:
@@ -46,11 +45,6 @@ jobs:
           - os: macos-latest
             target: x86_64-apple-darwin
             asset: documentum-macos-x86_64.tar.gz
-          # Windows: best effort until it is exercised regularly.
-          - os: windows-2022
-            target: x86_64-pc-windows-msvc
-            asset: documentum-windows-x86_64.zip
-            optional: true
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,10 +84,7 @@ jobs:
           set -euo pipefail
           out="target/${{ matrix.target }}/release"
           mkdir -p dist
-          case "${{ matrix.asset }}" in
-            *.zip) (cd "$out" && 7z a -tzip "$GITHUB_WORKSPACE/dist/${{ matrix.asset }}" "$BIN.exe" >/dev/null) ;;
-            *)     tar -czf "dist/${{ matrix.asset }}" -C "$out" "$BIN" ;;
-          esac
+          tar -czf "dist/${{ matrix.asset }}" -C "$out" "$BIN"
           ls -l dist
 
       - uses: actions/upload-artifact@v4

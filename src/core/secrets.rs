@@ -1,4 +1,4 @@
-//! Secret detection before indexing (patterns from rangex).
+//! Secret detection before indexing.
 //!
 //! An index is served to agents: a key that gets indexed is a key that ends up
 //! in a prompt. A file with a high-confidence secret is therefore quarantined —

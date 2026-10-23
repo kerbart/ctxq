@@ -1,4 +1,4 @@
-//! rangex mechanics in the binary: `ingest` (inventory + conversion + repo
+//! Intake mechanics in the binary: `ingest` (inventory + conversion + repo
 //! pointers, secrets quarantined, idempotent) and `export-map` (INDEX /
 //! AGENTS / .gitignore from the front matter, refused while staging is not
 //! empty).
@@ -43,7 +43,7 @@ fn md_names(dir: &Path) -> Vec<String> {
 #[test]
 fn ingest_then_export_map_end_to_end() {
     let dir = tempfile::tempdir().unwrap();
-    let intake = dir.path().join("_vrac");
+    let intake = dir.path().join("_intake");
     let context = dir.path().join("context");
 
     write(
@@ -136,7 +136,7 @@ fn ingest_then_export_map_end_to_end() {
     );
     assert!(
         contrat.contains("source_type: \"docx\"")
-            && contrat.contains("category: \"divers\"")
+            && contrat.contains("category: \"misc\"")
             && contrat.contains("Pénalité 2 %."),
         "{contrat}"
     );
@@ -151,10 +151,10 @@ fn ingest_then_export_map_end_to_end() {
         }
     }
     assert!(context.join("assets/logo.png").exists());
-    let pointer = md_names(&context.join("sources/divers"));
+    let pointer = md_names(&context.join("sources/misc"));
     assert_eq!(pointer.len(), 1);
     let pointer_md =
-        std::fs::read_to_string(context.join("sources/divers").join(&pointer[0])).unwrap();
+        std::fs::read_to_string(context.join("sources/misc").join(&pointer[0])).unwrap();
     assert!(
         pointer_md.contains("source_type: repo")
             && pointer_md.contains("Rust (1)")
@@ -162,7 +162,7 @@ fn ingest_then_export_map_end_to_end() {
         "{pointer_md}"
     );
 
-    // Inventory JSON keeps rangex's shape.
+    // Inventory JSON shape.
     let inv: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(context.join(".organizer/inventory.json")).unwrap(),
     )
@@ -183,7 +183,7 @@ fn ingest_then_export_map_end_to_end() {
         "{again:?}"
     );
     assert_eq!(md_names(&staging).len(), 5);
-    assert_eq!(md_names(&context.join("sources/divers")).len(), 1);
+    assert_eq!(md_names(&context.join("sources/misc")).len(), 1);
     // --force re-converts into the same files.
     let forced = ingest(&IngestOptions {
         force: true,
@@ -201,7 +201,7 @@ fn ingest_then_export_map_end_to_end() {
     let map_opts = MapOptions {
         context: context.clone(),
         profile: "shaping".into(),
-        intake: "_vrac".into(),
+        intake: "_intake".into(),
         force: false,
         agents_template: None,
     };
@@ -216,12 +216,12 @@ fn ingest_then_export_map_end_to_end() {
     for n in md_names(&staging) {
         let body = std::fs::read_to_string(staging.join(&n)).unwrap();
         let (cat, summary) = if n.ends_with("_cr-r-union.md") {
-            ("reunions", "CR : pgvector retenu.")
+            ("meetings", "CR : pgvector retenu.")
         } else {
             ("specs", "Spec.")
         };
         let body = body
-            .replace("category: \"divers\"", &format!("category: \"{cat}\""))
+            .replace("category: \"misc\"", &format!("category: \"{cat}\""))
             .replace("summary: \"\"", &format!("summary: \"{summary}\""))
             .replace("tags: []", "tags: [atlas]");
         write(&context.join("sources").join(cat).join(&n), body);
@@ -259,5 +259,5 @@ fn ingest_then_export_map_end_to_end() {
         agents.contains("profile **`shaping`** · 6 document(s)"),
         "{agents}"
     );
-    assert_eq!(std::fs::read_to_string(context.join(".gitignore")).unwrap(), "# rangex — never push potentially confidential content\n/_vrac/\nsources/\nassets/\n.organizer/\n");
+    assert_eq!(std::fs::read_to_string(context.join(".gitignore")).unwrap(), "# documentum ingest — never push potentially confidential content\n/_intake/\nsources/\nassets/\n.organizer/\n");
 }

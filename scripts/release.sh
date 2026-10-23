@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cut a release: tag the current commit and push the tag. GitHub Actions
 # (.github/workflows/release.yml) builds every platform and publishes the
-# archives + SHA256SUMS; install.sh / install.ps1 pick them up.
+# archives + SHA256SUMS; install.sh picks them up.
 #
 #   scripts/release.sh v2.0.1
 set -euo pipefail

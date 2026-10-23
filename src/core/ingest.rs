@@ -1,14 +1,11 @@
-//! rangex mechanics, in the binary: intake inventory, conversion to a staging
+//! Intake mechanics, in the binary: intake inventory, conversion to a staging
 //! area, repo pointers, and the context map (`INDEX.md`, `INDEX.json`,
 //! `AGENTS.md`, `.gitignore`).
 //!
-//! rangex (the skill) turns a heap of heterogeneous files dropped in an intake
-//! folder into a `context/` tree that agents read through a one-line-per-doc
-//! map. Its *judgement* steps (classify, summarise) stay with the agent; its
-//! *mechanical* steps were Python scripts (`inventory.py`, `convert.py`,
-//! `repo_summary.py`, `build_index.py`). This module replaces them with the
-//! same on-disk layout and JSON shapes, so the skill, its viewer and existing
-//! `context/` folders keep working:
+//! `ingest` turns a heap of heterogeneous files dropped in an intake folder
+//! into a `context/` tree that agents read through a one-line-per-doc map. The
+//! *judgement* steps (classify, summarise) stay with the agent; this module
+//! does the *mechanical* ones, with this on-disk layout:
 //!
 //! ```text
 //! <context>/.organizer/inventory.json      what was found (hashes, duplicates, repos, secrets)
@@ -81,12 +78,12 @@ const REPO_IGNORE: &[&str] = &[
 const SECRET_SCAN_MAX: u64 = 2 * 1024 * 1024;
 const SECRET_SCAN_CHARS: usize = 200_000;
 
-/// File names that denote key material or credentials (rangex's heuristic):
+/// File names that denote key material or credentials (heuristic):
 /// such a file is quarantined whatever its content.
 static SECRET_NAME: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"(?i)(service[-_]?account|credentials|secret|id_rsa|\.pem$|\.p12$|\.pfx$|(^|[-_.])env($|[-_.]))").unwrap()
 });
-/// rangex content patterns not covered by the index scanner.
+/// Content patterns not covered by the index scanner.
 static SECRET_EXTRA: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     [
         (r#""private_key"\s*:"#, "gcp-service-account"),
@@ -135,7 +132,7 @@ pub fn source_type_of(ext: &str) -> &'static str {
     }
 }
 
-/// `Deck Kickoff V2.pptx` → `deck-kickoff-v2` (ASCII only, like rangex).
+/// `Deck Kickoff V2.pptx` → `deck-kickoff-v2` (ASCII only).
 pub fn slugify(name: &str) -> String {
     let base = match name.rfind('.') {
         Some(i) if i + 1 < name.len() => &name[..i],
@@ -231,7 +228,7 @@ impl Scanner {
         }
     }
 
-    /// Reason to quarantine `path` (`None` when clean). Mirrors rangex: name
+    /// Reason to quarantine `path` (`None` when clean). Name
     /// heuristic for everything, content patterns for text files under 2 MB.
     fn file(&self, path: &Path, kind: Kind, size: u64) -> Option<String> {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
@@ -394,7 +391,7 @@ fn front_matter_stub(rec: &Record) -> String {
         format!("source_path: {}", q(&rec.path)),
         format!("source_type: {}", q(source_type_of(ext))),
         format!("date: {}", q(&rec.date)),
-        "category: \"divers\"".to_string(),
+        "category: \"misc\"".to_string(),
         "project_phase: \"\"".to_string(),
         "summary: \"\"".to_string(),
         "tags: []".to_string(),
@@ -662,7 +659,7 @@ pub struct IngestOptions {
     pub force: bool,
 }
 
-/// rangex steps 1 and 2 (+ repo pointers): inventory, then convert every kept
+/// Steps 1 and 2 (+ repo pointers): inventory, then convert every kept
 /// text file to `staging/`, copy assets, write one pointer per repo.
 pub fn ingest(opts: &IngestOptions) -> Result<IngestReport> {
     let inv = inventory(&opts.intake, &opts.context)?;
@@ -882,7 +879,7 @@ fn repo_tree(root: &Path, max_depth: usize, max_entries: usize) -> Vec<String> {
 }
 
 /// A repo dropped in the intake is not converted (agents grep the code): one
-/// pointer document in `sources/divers/` gives its path, size, languages, tree
+/// pointer document in `sources/misc/` gives its path, size, languages, tree
 /// and README head.
 pub fn repo_pointer(repo: &Path, context: &Path) -> Result<PathBuf> {
     if !repo.is_dir() {
@@ -928,7 +925,7 @@ pub fn repo_pointer(repo: &Path, context: &Path) -> Result<PathBuf> {
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_else(|| "repo".into());
     let today = today();
-    let out_dir = context.join("sources").join("divers");
+    let out_dir = context.join("sources").join("misc");
     std::fs::create_dir_all(&out_dir)?;
     let out_path = out_dir.join(format!(
         "{today}_repo_{}.md",
@@ -944,7 +941,7 @@ pub fn repo_pointer(repo: &Path, context: &Path) -> Result<PathBuf> {
         format!("source_path: {}", q(&repo.to_string_lossy())),
         "source_type: repo".to_string(),
         format!("date: {today}"),
-        "category: divers".to_string(),
+        "category: misc".to_string(),
         "project_phase: pure-code".to_string(),
         format!("summary: {}", q(&summary)),
         "tags: [repo, code]".to_string(),
@@ -985,15 +982,15 @@ pub fn repo_pointer(repo: &Path, context: &Path) -> Result<PathBuf> {
 const CATEGORY_ORDER: &[(&str, &str)] = &[
     ("decisions", "Decisions (ADR)"),
     ("specs", "Specs & scoping"),
-    ("reunions", "Meetings / minutes"),
+    ("meetings", "Meetings / minutes"),
     ("mails", "Mails"),
     ("design", "Design"),
-    ("divers", "Misc"),
+    ("misc", "Misc"),
 ];
 
-/// rangex's `AGENTS.md` template (placeholders `{{PROFILE}}`, `{{INTAKE}}`,
+/// The `AGENTS.md` template (placeholders `{{PROFILE}}`, `{{INTAKE}}`,
 /// `{{DATE}}`, `{{DOC_COUNT}}`); `MapOptions::agents_template` overrides it.
-pub const AGENTS_TEMPLATE: &str = include_str!("../cli/templates/rangex-agents.md.tmpl");
+pub const AGENTS_TEMPLATE: &str = include_str!("../cli/templates/intake-agents.md.tmpl");
 
 fn category_label(cat: &str) -> String {
     CATEGORY_ORDER
@@ -1059,7 +1056,7 @@ fn md_files(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// rangex step 5: `INDEX.md` (the map), `INDEX.json`, `AGENTS.md`,
+/// Step 5: `INDEX.md` (the map), `INDEX.json`, `AGENTS.md`,
 /// `.gitignore` from the front matter of `sources/**/*.md`. Refuses to build
 /// while `staging/` still holds documents (each would be a silently lost doc).
 pub fn export_map(opts: &MapOptions) -> Result<MapReport> {
@@ -1218,7 +1215,7 @@ pub fn export_map(opts: &MapOptions) -> Result<MapReport> {
     std::fs::write(opts.context.join("AGENTS.md"), agents)?;
 
     let gitignore = format!(
-        "# rangex — never push potentially confidential content\n/{}/\nsources/\nassets/\n.organizer/\n",
+        "# documentum ingest — never push potentially confidential content\n/{}/\nsources/\nassets/\n.organizer/\n",
         opts.intake
     );
     std::fs::write(opts.context.join(".gitignore"), gitignore)?;
@@ -1234,7 +1231,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slugify_matches_rangex() {
+    fn slugify_is_ascii_only() {
         assert_eq!(slugify("Deck Kickoff V2.pptx"), "deck-kickoff-v2");
         assert_eq!(slugify("mon fichiertest.md"), "mon-fichiertest");
         assert_eq!(slugify("Réunion été.docx"), "r-union-t");

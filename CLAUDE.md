@@ -36,7 +36,7 @@ Report the MRR before/after and the per-question divergences; a change that
 
 - `src/core/hybrid.rs` — doc engine: sync, fusion search, filters, stores, federation.
 - `src/core/{mdchunk,lexical,embed_http,settings,collect,secrets,convert,docmeta,agent}.rs`
-- `src/core/ingest.rs` — rangex mechanics (`ingest`, `export-map`): intake → staging → context map.
+- `src/core/ingest.rs` — intake mechanics (`ingest`, `export-map`): intake → staging → context map.
 - `src/core/sources/` — inventory sources (command + built-ins).
 - `src/core/store/` — vector stores (qdrant, peer).
 - `src/cli/daemon.rs` — daemon (used by `search`), HTTP API.

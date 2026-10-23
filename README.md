@@ -65,7 +65,7 @@ against the release's `SHA256SUMS` by the installer:
 curl -fsSL https://documentum.kerliane.eu/install.sh | bash      # Linux, macOS, WSL → ~/.local/bin
 ```
 
-Native Windows build: not yet (use WSL meanwhile).
+Native Windows build: coming soon. Use WSL meanwhile.
 
 `DOCUMENTUM_VERSION=v3.0.1` pins a release, `DOCUMENTUM_BINDIR` changes the
 destination. Project page: <https://documentum.kerliane.eu>.
