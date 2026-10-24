@@ -61,19 +61,24 @@ impl ToolOutcome {
     }
 }
 
-/// Every tool this server exposes, in a stable order (code tools, then docs tools).
+/// Every tool this server exposes. Docs first: that is what an agent should
+/// try before walking the tree. Code-graph tools follow.
 pub fn registry() -> Vec<ToolSpec> {
-    let mut specs = code::tool_specs();
-    specs.extend(docs::tool_specs());
+    let mut specs = docs::tool_specs();
+    specs.extend(code::tool_specs());
     specs
 }
 
 /// Short text handed back from `initialize` to orient the client.
 pub fn instructions() -> String {
-    "documentum: code_symbol/code_callers/code_callees/code_path/code_impact/code_sync \
-     inspect the home-grown code graph; search/context/inventory/map/status/annotate serve \
-     the documentation index. Every tool accepts an optional \"workspace\" name (§4.2); omit \
-     it to use the default workspace."
+    "Start with inventory (exact rows: port, container, domain), search (ranked \
+     passages), or status (is the index fresh?). Use context when you need docs \
+     and code in one budgeted page. Code graph: code_symbol, then code_callers / \
+     code_callees / code_path / code_impact. After edits, code_sync. Leave notes \
+     with annotate. Every tool accepts optional \"workspace\". If search or status \
+     returns `upgrade`, tell the user — do not ignore it: the index is still on \
+     the hash embedder and a neural backend (Ollama / OpenAI-compatible) would \
+     help on this corpus."
         .to_string()
 }
 
@@ -114,18 +119,18 @@ mod tests_mod {
         assert_eq!(
             names,
             vec![
-                "code_symbol",
-                "code_callers",
-                "code_callees",
-                "code_path",
-                "code_impact",
-                "code_sync",
                 "search",
                 "context",
                 "inventory",
                 "map",
                 "status",
                 "annotate",
+                "code_symbol",
+                "code_callers",
+                "code_callees",
+                "code_path",
+                "code_impact",
+                "code_sync",
             ]
         );
     }

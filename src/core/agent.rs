@@ -84,7 +84,33 @@ pub fn search(engine: &DocEngine, root: &Path, args: &SearchArgs) -> Result<Valu
             })
         })
         .collect();
-    Ok(json!({ "query": args.query, "results": results }))
+    let mut out = json!({ "query": args.query, "results": results });
+    if let Some(upgrade) = upgrade_from_engine(engine) {
+        out["upgrade"] = upgrade.to_json();
+    }
+    Ok(out)
+}
+
+fn upgrade_from_engine(engine: &DocEngine) -> Option<crate::core::embed_hint::Upgrade> {
+    let conn = engine.conn();
+    let files: usize = conn
+        .query_row("SELECT COUNT(*) FROM doc_file_meta", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as usize;
+    let chunks: usize = conn
+        .query_row("SELECT COUNT(*) FROM doc_chunks", [], |r| {
+            r.get::<_, i64>(0)
+        })
+        .unwrap_or(0) as usize;
+    let embedder_id: String = conn
+        .query_row(
+            "SELECT value FROM index_meta WHERE key = 'embedder_id'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap_or_default();
+    crate::core::embed_hint::Upgrade::assess_embedder_id(files, chunks, &embedder_id)
 }
 
 /// Rows of the markdown tables of a document, as objects keyed by header.
@@ -317,6 +343,7 @@ pub fn status(engine: &DocEngine, root: &Path) -> Result<Value> {
             "unusable": completeness.unusable.len(),
             "unaccounted": completeness.unaccounted.iter().map(|p| display_path(root, p)).collect::<Vec<_>>(),
         },
+        "upgrade": upgrade_from_engine(engine).map(|u| u.to_json()),
     }))
 }
 

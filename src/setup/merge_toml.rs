@@ -1,6 +1,6 @@
 //! Idempotent TOML config merge for the Codex CLI (§3.1, the only `toml` client): navigate/
 //! create the `root_key_path` table chain with `toml_edit`, preserving comments/formatting of
-//! everything else in the document, and upsert or remove the `documentum` sub-table.
+//! everything else in the document, and upsert or remove the `ctxq` sub-table.
 
 use toml_edit::{Array, DocumentMut, InlineTable, Item, Table};
 
@@ -12,6 +12,8 @@ pub struct Entry {
     pub command: String,
     pub args: Vec<String>,
     pub env: Vec<(String, String)>,
+    /// Working directory for the stdio process (Codex `[mcp_servers.*].cwd`).
+    pub cwd: Option<String>,
 }
 
 fn entry_to_table(entry: &Entry) -> Table {
@@ -27,6 +29,9 @@ fn entry_to_table(entry: &Entry) -> Table {
         env.insert(key, value.as_str().into());
     }
     table["env"] = Item::Value(env.into());
+    if let Some(cwd) = &entry.cwd {
+        table["cwd"] = toml_edit::value(cwd.clone());
+    }
     table
 }
 
@@ -70,10 +75,10 @@ pub fn apply(
         let table = navigate(&mut doc, root_key_path)?;
         match entry {
             Some(e) => {
-                table.insert("documentum", Item::Table(entry_to_table(e)));
+                table.insert("ctxq", Item::Table(entry_to_table(e)));
             }
             None => {
-                table.remove("documentum");
+                table.remove("ctxq");
             }
         }
     }
@@ -88,18 +93,29 @@ mod tests {
 
     fn sample_entry() -> Entry {
         Entry {
-            command: "documentum".to_string(),
+            command: "ctxq".to_string(),
             args: vec!["mcp".to_string(), "--path".to_string(), "/repo".to_string()],
-            env: vec![("DOCUMENTUM_CLIENT".to_string(), "codex".to_string())],
+            env: vec![("CTXQ_CLIENT".to_string(), "codex".to_string())],
+            cwd: None,
         }
+    }
+
+    #[test]
+    fn writes_cwd_when_set() {
+        let mut entry = sample_entry();
+        entry.args = vec!["mcp".to_string()];
+        entry.cwd = Some("/abs/repo".to_string());
+        let (_, text) = apply(None, &["mcp_servers"], Some(&entry)).unwrap();
+        assert!(text.contains("cwd = \"/abs/repo\""));
+        assert!(!text.contains("--path"));
     }
 
     #[test]
     fn creates_missing_table_chain_on_absent_file() {
         let (changed, text) = apply(None, &["mcp_servers"], Some(&sample_entry())).unwrap();
         assert!(changed);
-        assert!(text.contains("[mcp_servers.documentum]"));
-        assert!(text.contains("command = \"documentum\""));
+        assert!(text.contains("[mcp_servers.ctxq]"));
+        assert!(text.contains("command = \"ctxq\""));
     }
 
     #[test]
@@ -109,7 +125,7 @@ mod tests {
         assert!(text.contains("# user comment"));
         assert!(text.contains("[mcp_servers.other-tool]"));
         assert!(text.contains("command = \"foo\""));
-        assert!(text.contains("[mcp_servers.documentum]"));
+        assert!(text.contains("[mcp_servers.ctxq]"));
     }
 
     #[test]
@@ -134,7 +150,7 @@ mod tests {
         let with_other = format!("{installed}[mcp_servers.other-tool]\ncommand = \"foo\"\n");
         let (changed, text) = apply(Some(&with_other), &["mcp_servers"], None).unwrap();
         assert!(changed);
-        assert!(!text.contains("[mcp_servers.documentum]"));
+        assert!(!text.contains("[mcp_servers.ctxq]"));
         assert!(text.contains("[mcp_servers.other-tool]"));
     }
 

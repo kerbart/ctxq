@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Cut a release: tag the current commit and push the tag. GitHub Actions
 # (.github/workflows/release.yml) builds every platform and publishes the
-# archives + SHA256SUMS; install.sh picks them up.
+# archives + SHA256SUMS. Copy them to dist/releases/ on ctxq.dev so the
+# one-liner (`curl https://ctxq.dev/install.sh | sh`) serves them too.
 #
-#   scripts/release.sh v2.0.1
+#   scripts/release.sh v3.0.1
 set -euo pipefail
 
 TAG="${1:-}"
@@ -24,6 +25,6 @@ if [ "v$CARGO_VERSION" != "$TAG" ]; then
   exit 1
 fi
 
-git tag -a "$TAG" -m "documentum $TAG"
+git tag -a "$TAG" -m "ctxq $TAG"
 git push origin "$TAG"
 echo "==> tag $TAG pushed; follow the build: gh run watch --repo \"$(gh repo view --json nameWithOwner -q .nameWithOwner)\""

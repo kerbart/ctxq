@@ -457,6 +457,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctxq"
+version = "3.0.1"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "fastembed",
+ "globset",
+ "ignore",
+ "indicatif 0.17.11",
+ "libc",
+ "ndarray 0.16.1",
+ "ndarray-npy",
+ "pdf-extract",
+ "pulldown-cmark",
+ "quick-xml",
+ "rayon",
+ "regex",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha1",
+ "sha2",
+ "tempfile",
+ "tokio",
+ "toml",
+ "toml_edit",
+ "tracing",
+ "tracing-subscriber",
+ "ureq 2.12.1",
+ "zip",
+]
+
+[[package]]
 name = "daachorse"
 version = "3.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -603,41 +638,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
-]
-
-[[package]]
-name = "documentum"
-version = "3.0.1"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "fastembed",
- "globset",
- "ignore",
- "indicatif 0.17.11",
- "libc",
- "ndarray 0.16.1",
- "ndarray-npy",
- "pdf-extract",
- "pulldown-cmark",
- "quick-xml",
- "rayon",
- "regex",
- "rusqlite",
- "serde",
- "serde_json",
- "serde_yaml",
- "sha1",
- "sha2",
- "tempfile",
- "tokio",
- "toml",
- "toml_edit",
- "tracing",
- "tracing-subscriber",
- "ureq 2.12.1",
- "zip",
 ]
 
 [[package]]

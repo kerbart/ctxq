@@ -1,6 +1,6 @@
-# documentum v3: functional specification
+# ctxq v3: functional specification
 
-This document specifies the **behaviours and contracts** of the `documentum`
+This document specifies the **behaviours and contracts** of the `ctxq`
 binary: what it does, not how the code is organised. The code graph is
 described in `docs/v3/CODEGRAPH.md`.
 
@@ -9,7 +9,7 @@ mdchunk,agent,embed_http,collect,doctext}.rs`, `src/core/sources/*`,
 `src/core/store/*`, `src/cli/daemon.rs`.
 
 No machine-, model- or service-specific value in the code: everything goes
-through `documentum.toml` (documented template: `documentum.example.toml`).
+through `ctxq.toml` (documented template: `ctxq.example.toml`).
 
 ---
 
@@ -36,9 +36,9 @@ A discovery filter resolves, from the workspace root and `[collect]`:
   directories of the root only: a deeper subdirectory with the same name is
   not affected).
 - **Exclusion globs**: file `exclude_globs_file` (default
-  `.documentumignore`, one line = one glob relative to the root, `#` =
+  `.ctxqignore`, one line = one glob relative to the root, `#` =
   comment, leading/trailing slashes ignored) **plus** inline `exclude_globs`;
-  a pattern `x` also excludes `x/**`. A missing `.documentumignore` file
+  a pattern `x` also excludes `x/**`. A missing `.ctxqignore` file
   causes no error (empty list).
 - **`.gitignore`**: `respect_gitignore` (bool, default `true`): delegates to
   the file walker (an `ignore`-style walker: honours `.gitignore`, `.ignore`,
@@ -52,8 +52,8 @@ A discovery filter resolves, from the workspace root and `[collect]`:
   project. A `.git` that is a **file** (worktree, submodule) does not trigger
   the rule: it is kept. If `own_remotes` is empty, no nested git directory is
   excluded by this rule (ownership is never guessed).
-- **Always-excluded files**: `documentum.toml`, `.documentum.toml`,
-  `.documentumignore` themselves (configuration, not knowledge).
+- **Always-excluded files**: `ctxq.toml`, `.ctxq.toml`,
+  `.ctxqignore` themselves (configuration, not knowledge).
 - **`table_row_dirs`**: directories (relative to the root) whose large
   markdown tables are *additionally* indexed row by row (see §1.2). The scan
   output directory (`[scan].output_dir`) is always implicitly added to it.
@@ -358,7 +358,7 @@ per chunk) from `SearchFilters::matches`; a chunk of a rejected file is
 excluded from the pool before score computation, not after.
 
 **Federation (`[[store.federate]]`)**: additional read-only stores (Qdrant or
-documentum peer) are queried on every search, **in parallel** with the local
+ctxq peer) are queried on every search, **in parallel** with the local
 index, with:
 - a purely dense score (no local lexical evidence), multiplied by the federated
   store's `weight` (default 1.0);
@@ -415,18 +415,26 @@ templates; changing one without rebuilding the index must be detectable),
 - **ONNX** (optional compile-time feature `onnx-embeddings`): model
   `bge-small-en-v1.5`, **384 dimensions**, downloaded **on demand** at first
   use (never at build or install time), cache directory resolved by precedence
-  `$DOCUMENTUM_ONNX_CACHE` > `$FASTEMBED_CACHE_PATH` >
-  `$DOCUMENTUM_HOME_DIR`/`$HOME`/`%USERPROFILE%` + `/.documentum/models` >
+  `$CTXQ_ONNX_CACHE` > `$FASTEMBED_CACHE_PATH` >
+  `$CTXQ_HOME_DIR`/`$HOME`/`%USERPROFILE%` + `/.ctxq/models` >
   system temporary directory. Stable identifier `"bge-small-en-v1.5-384"`. A
   loading/inference error must never panic: fall back to a zero vector with a
   logged warning.
 
 Backend selection: `[embed].backend` (`local`|`onnx`|`ollama`|`openai`, default
-`local`), overridable by `DOCUMENTUM_EMBEDDINGS`/by the global CLI flag
+`local`), overridable by `CTXQ_EMBEDDINGS`/by the global CLI flag
 `--embeddings`. No index must ever be rebuilt **implicitly** with a remote
 embedder (non-consented cost and network dependency): a backend change
 detected on opening schedules a full re-embedding at the **next explicit
 `sync`**, never automatically in the course of a search.
+
+When the stored embedder is `local-hash-*` and the corpus is large
+(≥ 150 files or ≥ 1 500 chunks), `index` / `sync` / `setup` / `doctor`
+print a copy-paste `ctxq.toml` snippet (`[embed] backend = "ollama"`).
+Past 20 000 chunks they also suggest `[store] backend = "qdrant"`.
+`search` and MCP `status` expose the same signal as an `upgrade` object
+so an agent can tell the user. Small corpora stay quiet besides the usual
+dim “BM25 leads” line.
 
 ---
 
@@ -455,7 +463,7 @@ replaces the default list), `ports` (listening sockets via `/proc`, option
 `entry_files`, `exclude`), `scripts` (executables and their first comment line,
 option `dirs`). Prose generated in `en` or `fr` (`[scan].lang`).
 
-`documentum scan [--only NAME...] [--sync]` runs the declared sources (or only
+`ctxq scan [--only NAME...] [--sync]` runs the declared sources (or only
 the named ones), writes each changed document via atomic
 write-then-rename (a concurrent sync never reads a half-written file),
 continues when a source fails (the previous document stays in place, the
@@ -471,7 +479,7 @@ the context folder: `.organizer/{inventory,mapping,conversion-log}.json`,
 `.organizer/staging/`, `assets/`, `sources/`, `INDEX.md`, `INDEX.json`,
 `AGENTS.md`, `.gitignore`.
 
-`documentum ingest [INTAKE=_intake] [--context context] [--force] [--json]`:
+`ctxq ingest [INTAKE=_intake] [--context context] [--force] [--json]`:
 inventory by sha256 (duplicates → the most recent wins, top-level git
 repositories detected as repos), quarantine (secret scanner + file-name
 heuristic + `client_secret`/`private_key` patterns, **and re-scan of the
@@ -487,7 +495,7 @@ silently degraded conversion), front-matter stub, asset copy, per-repo pointer
 `quarantine` (list of path/reason pairs), `failures` (list of path/reason
 pairs); otherwise an equivalent text report.
 
-`documentum export-map [CONTEXT=context] [--profile pure-code|shaping|swarming]
+`ctxq export-map [CONTEXT=context] [--profile pure-code|shaping|swarming]
 [--intake _intake] [--force] [--agents-template FILE] [--json]`: builds
 `INDEX.md`/`INDEX.json`/`AGENTS.md`/`.gitignore` from the front matter of
 `<context>/sources/**/*.md` (`docmeta` reader), cross-checked against the
@@ -500,7 +508,7 @@ in staging would otherwise be silent. JSON output: `written` (bool), `docs`,
 
 ### 2.3 `convert`: office documents and PDF
 
-`documentum convert FILE` prints the resulting markdown on stdout.
+`ctxq convert FILE` prints the resulting markdown on stdout.
 Supported extensions: `docx`, `pptx`, `xlsx`, `pdf` (constant shared with the
 discovery filter, §1.1, to apply the right size limit). Conversion is
 **in-process**, with no external dependency (MarkItDown, LibreOffice): direct
@@ -526,16 +534,16 @@ store must know to answer on its own: `chunk_id`, `vector`, `source`,
 
 Backends: `local` (default: vectors in the index's SQLite database, exact
 in-memory scan), `qdrant` (HTTP collection, no heavy client), `peer` (another
-documentum instance through its daemon HTTP API; federation only, never as the
+ctxq instance through its daemon HTTP API; federation only, never as the
 primary `[store]`). Modes: `owned` (`sync` writes to it), `attached`
 (read-only: a database shared by someone else, queried as is).
 `[[store.federate]]` declares additional stores always in `attached` mode,
 with `weight` and optional `name` (display label, otherwise the URL).
 
-`documentum store push`: pushes all the vectors already present in the local
+`ctxq store push`: pushes all the vectors already present in the local
 index to the configured external store, **without re-embedding** (fast store
 switch); refuses if the store is `attached` (read-only) or if `[store]` is
-`local` (nothing to push). `documentum store status`: number of points on the
+`local` (nothing to push). `ctxq store status`: number of points on the
 external store side + number of chunks on the local index side (to spot a
 mismatch), or `backend = local : vectors in <path>` if there is no external
 store.
@@ -568,21 +576,25 @@ scan) resynced in the meantime, the engine invalidates its in-memory view
 before answering. A *warm-up* (a dummy search) is done at startup so that the
 first real query does not pay the loading cost.
 
-**Periodic refresh** (`[daemon].sync_interval_secs` / `scan_interval_secs`,
-0 = disabled): in a separate thread, on a distinct engine (queries keep being
-served during the resync), with a scan always followed by a sync.
+**Periodic refresh** (`[daemon].sync_interval_secs` default 60 /
+`scan_interval_secs` default 300; 0 = disabled): in a separate thread, on a
+distinct engine (queries keep being served during the resync), with a scan
+always followed by a sync. The first refresh waits one interval: an immediate
+write on autostart raced the first `search` calls (`SQLITE_BUSY`). Connections
+open with WAL and a 60 s busy timeout so a cache write during search does not
+fail while the refresher holds a transaction.
 
-`documentum daemon [--http ADDRESS] [--stop]`: refuses to start if a daemon
+`ctxq daemon [--http ADDRESS] [--stop]`: refuses to start if a daemon
 already answers on the target socket, or if the index does not exist yet
 (invites the user to run `sync` first). `--stop` stops the current workspace's
 daemon.
 
-`documentum search QUERY [-l|--limit N] [--full] [--json] [--no-daemon]
+`ctxq search QUERY [-l|--limit N] [--full] [--json] [--no-daemon]
 [--tag T]... [--type T]... [--since DATE] [--path PREFIX]...` (`--k` is an
 alias of `--limit`, default 5): goes through the daemon, started on demand,
 except with `--no-daemon` (in-process search, neither starting nor using a
 daemon). `--full` disables the truncation of passages. JSON output: see §3.
-`q` is a hidden former name of `search`, kept for scripts: `documentum q
+`q` is a hidden former name of `search`, kept for scripts: `ctxq q
 [QUERY] [--k N] [--full] [--json] [--stop] [--no-daemon] [--tag T]...
 [--type T]... [--since DATE] [--path PREFIX]...`, with `--stop` stopping the
 daemon and a JSON output that is a bare list of objects `{rank, score, source,
@@ -598,7 +610,11 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
 
 - **`index`**: full reindex of the documentation (and, when `[code] enabled`,
   of the code graph). Progressive text output (numbered steps), final summary
-  (files scanned, chunks, any analysis problems).
+  (files scanned, chunks, any analysis problems). Prints the workspace root,
+  the index path (`~/.cache/ctxq/<name>-<hash>/docs.db`, or `<root>/.ctxq/`
+  with `--in-repo`), what is covered, and that **each workspace root has its
+  own index**. `$HOME` and a folder inside it are two indexes; they do not
+  merge. `--force-home` is required to index `$HOME`.
 - **`sync`**: incremental sync of the documentation (and of the code graph).
   Same output as `index`.
 - **`doctor [--workspace NAME=PATH]... [--all]`**: health diagnostic: database
@@ -637,18 +653,22 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
   [--skill] [--hooks] [--in-repo]`**: registers the MCP server with clients
   (§3.1). `--client` (alias `--agent`, repeatable) takes `all` or a client
   identifier: `claude`, `cursor`, `vscode`, `gemini`, `antigravity`, `zed`,
-  `generic`, `antigravity-user`, `codex`, `windsurf`, `claude-desktop`. The
-  default `all` covers detected **project** clients only; **user** clients
-  (`antigravity-user`, `codex`, `windsurf`, `claude-desktop`) must be named
-  explicitly and receive `--path <repo>` pinned in their config.
+  `generic`, `antigravity-user`, `codex`, `codex-user`, `windsurf`,
+  `claude-desktop`. The default `all` covers detected **project** clients
+  plus Codex when `$HOME/.codex/` exists (project `.codex/config.toml` and
+  user `~/.codex/config.toml`). Other **user** clients (`antigravity-user`,
+  `windsurf`, `claude-desktop`) must be named explicitly and receive
+  `--path <repo>` pinned in their config. Codex user entries do **not** pin
+  `--path`: Codex launches MCP from the session cwd, and a pinned path would
+  steal every other project.
   `--uninstall` removes the entry instead of adding it; `--command PATH` is
   the command written in the configs (default: absolute path of the current
   binary); `--rules` (default true, `--rules=false` to skip) generates or
   extends `AGENTS.md` plus per-client pointers (`CLAUDE.md`, `GEMINI.md`,
   `.github/copilot-instructions.md`); `--skill` installs the
-  `documentum-investigate` skill under `.claude/skills/` and
+  `ctxq-investigate` skill under `.claude/skills/` and
   `.agents/skills/`; `--hooks` installs a background-resync post-commit git
-  hook (opt-in); `--in-repo` puts the index under `.documentum/` instead of
+  hook (opt-in); `--in-repo` puts the index under `.ctxq/` instead of
   the user cache. Flow: indexing → MCP registration → rules-file generation →
   optional skill and git hook.
 - **`changes [PATHS...] [--base REF] [--head REF] [--depth 2] [--json]`**:
@@ -676,27 +696,31 @@ A hidden subcommand `q` is the former name of `search` (§2.5).
 
 ### 3.1 `setup`: MCP registration per client
 
-The server is always registered under the key **`documentum`**. For a **user**
+The server is always registered under the key **`ctxq`**. For a **user**
 client (global scope, never pinned to a repo except via `--path`), the written
-arguments include `["mcp", "--path", "<absolute-repo>"]`; for a **project**
-client, only `["mcp"]` (the client launches from the project directory). An
-environment variable `DOCUMENTUM_CLIENT` (value = client identifier, e.g.
+arguments include `["mcp", "--path", "<absolute-repo>"]`, except **Codex
+user** (`codex-user`): only `["mcp"]`, because Codex starts the stdio server
+from the session cwd and a pinned `--path` would steal every other project.
+For a **project** client, only `["mcp"]` (the client launches from the
+project directory). Codex **project** entries also set `cwd` to the absolute
+repo. An environment variable `CTXQ_CLIENT` (value = client identifier, e.g.
 `"claude-code"`, `"cursor"`, `"vscode"`, `"gemini-cli"`, `"antigravity"`,
 `"codex"`, `"windsurf"`, `"claude-desktop"`, `"zed"`) is added to the entry.
 
 | Client | Scope | Config file | Root key | Entry shape |
 |---|---|---|---|---|
-| Claude Code | project | `.mcp.json` | `mcpServers.documentum` | `{command, args, env}` |
-| Cursor | project | `.cursor/mcp.json` | `mcpServers.documentum` | same as Claude |
-| VS Code / Copilot | project | `.vscode/mcp.json` | `servers.documentum` | `{type: "stdio", command, args, env}` |
-| Gemini CLI | project | `.gemini/settings.json` | `mcpServers.documentum` | same as Claude |
-| Antigravity (project) | project | `.agents/mcp_config.json` | `mcpServers.documentum` | same as Claude |
-| Zed | project | `.zed/settings.json` | `context_servers.documentum` | `{source: "custom", command, args, env}` |
-| Generic | project | `.mcp.json` | `mcpServers.documentum` | identical to Claude Code (alias) |
-| Antigravity (user) | user | `~/.gemini/config/mcp_config.json` | `mcpServers.documentum` | same + `--path` |
-| Codex CLI | user | `~/.codex/config.toml` | `[mcp_servers.documentum]` (TOML) | `command`, `args`, `env` as a TOML table |
-| Windsurf | user | `~/.codeium/windsurf/mcp_config.json` | `mcpServers.documentum` | same + `--path` |
-| Claude Desktop | user | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`; Linux: `~/.config/Claude/claude_desktop_config.json`; Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers.documentum` | same + `--path` |
+| Claude Code | project | `.mcp.json` | `mcpServers.ctxq` | `{command, args, env}` |
+| Cursor | project | `.cursor/mcp.json` | `mcpServers.ctxq` | same as Claude |
+| VS Code / Copilot | project | `.vscode/mcp.json` | `servers.ctxq` | `{type: "stdio", command, args, env}` |
+| Gemini CLI | project | `.gemini/settings.json` | `mcpServers.ctxq` | same as Claude |
+| Antigravity (project) | project | `.agents/mcp_config.json` | `mcpServers.ctxq` | same as Claude |
+| Zed | project | `.zed/settings.json` | `context_servers.ctxq` | `{source: "custom", command, args, env}` |
+| Generic | project | `.mcp.json` | `mcpServers.ctxq` | identical to Claude Code (alias) |
+| Antigravity (user) | user | `~/.gemini/config/mcp_config.json` | `mcpServers.ctxq` | same + `--path` |
+| Codex CLI (project) | project | `.codex/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env`, `cwd` as a TOML table |
+| Codex CLI (user) | user | `~/.codex/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env` (no `--path`, no `cwd`) |
+| Windsurf | user | `~/.codeium/windsurf/mcp_config.json` | `mcpServers.ctxq` | same + `--path` |
+| Claude Desktop | user | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`; Linux: `~/.config/Claude/claude_desktop_config.json`; Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers.ctxq` | same + `--path` |
 
 Common rules: read the existing file if present (JSON or TOML depending on the
 client), **merge** while preserving any other entry already present (never
@@ -708,12 +732,15 @@ untouched. Before any modification that actually changes the content, a
 timestamped **backup** is written under the workspace cache
 (`<cache>/backups/<file-name>.<timestamp>.bak`); a rerun that changes nothing
 touches neither the file nor the backups. `--uninstall` removes only the
-`documentum` key and leaves the rest intact. "Client present" detection (for
+`ctxq` key and leaves the rest intact. "Client present" detection (for
 `--client all`) by a marker specific to each project client (`.cursor/`,
-`.vscode/`, `.zed/`, `.gemini/`, `.agents/` directory, or presence of the
-config file itself); user clients are **never** auto-detected by
-`--client all`, only named explicitly: a global config is not touched without
-being asked for by name.
+`.vscode/`, `.zed/`, `.gemini/`, `.agents/`, `.codex/` directory, or presence
+of the config file itself). User clients other than Codex are **never**
+auto-detected by `--client all`, only named explicitly: a global config is
+not touched without being asked for by name. **Codex is auto-detected** when
+`$HOME/.codex/` exists, because its shell sandbox cannot run `ctxq` — MCP
+registration is the only path that works out of the box. After registering
+Codex, `setup` prints a reminder to restart the session and check `/mcp`.
 
 Rules files (pointer to `AGENTS.md`, added only if absent from the file):
 `CLAUDE.md` (`@AGENTS.md`) for Claude Code, `GEMINI.md` (`@./AGENTS.md`) for
@@ -737,7 +764,7 @@ Windsurf, Claude Desktop.
   recent supported one if the client asks for an unknown one.
 - **`initialize`** (request/response): receives the client's protocol version;
   answers with `protocolVersion` (the requested one if supported, otherwise the
-  most recent known to the server), `serverInfo` (name `documentum`, version),
+  most recent known to the server), `serverInfo` (name `ctxq`, version),
   `capabilities` (at least `{"tools": {"listChanged": false}}`: no dynamic tool
   list), and textual `instructions` briefly describing the available tools and
   when to use them.
@@ -886,11 +913,11 @@ resolution, and the robustness requirements.
 
 - **`install.sh`** (POSIX sh): OS/architecture detection (Linux and macOS,
   x86_64 and aarch64; anything else is refused), download of the asset of the
-  latest GitHub release (or of a tag pinned via `DOCUMENTUM_VERSION`),
+  latest GitHub release (or of a tag pinned via `CTXQ_VERSION`),
   **mandatory SHA256 verification** against the `SHA256SUMS` published in the
   release (refuses to install an unverified binary if `SHA256SUMS` is missing
   or does not cover the asset), installation into `~/.local/bin` by default
-  (`DOCUMENTUM_BINDIR` to override), without root. `GH_TOKEN`/`GITHUB_TOKEN` is
+  (`CTXQ_BINDIR` to override), without root. `GH_TOKEN`/`GITHUB_TOKEN` is
   only needed for private forks or to lift API rate limits. Fallback if the
   download fails and `cargo` is available: `cargo install --git` from the
   source repository.
@@ -904,9 +931,9 @@ resolution, and the robustness requirements.
 - **`.github/workflows/release.yml`**: triggered on a `v*` tag (or manually
   with an existing tag). Matrix: Linux x86_64/aarch64 (`cargo zigbuild`, static
   musl target, no glibc dependency) and macOS aarch64/x86_64 (built on an
-  Apple silicon runner). The build injects `DOCUMENTUM_VERSION`; `build.rs`
-  exposes the target triple as `DOCUMENTUM_TARGET`, both shown by
-  `documentum --version`. Packaging: `.tar.gz`. Publication: `sha256sum` over
+  Apple silicon runner). The build injects `CTXQ_VERSION`; `build.rs`
+  exposes the target triple as `CTXQ_TARGET`, both shown by
+  `ctxq --version`. Packaging: `.tar.gz`. Publication: `sha256sum` over
   all artifacts → `SHA256SUMS`, upload to the GitHub release (created if
   absent, `--clobber` otherwise, `--generate-notes --latest`).
 
@@ -922,7 +949,7 @@ tokenisation, fusion, embeddings or stores must replay this gate and report
 the MRR before/after, not a "looks better" judgement.
 
 - Dataset: a private golden set (`eval/golden.jsonl`, ignored by git, or the
-  file named by `$DOCUMENTUM_GOLDEN`; format in `eval/README.md`): one JSON
+  file named by `$CTXQ_GOLDEN`; format in `eval/README.md`): one JSON
   line per question, `{"q": "...", "expect": [substrings, one is enough]}` or
   `{"q": "...", "all": [substrings, all must co-occur in the same chunk:
   source + breadcrumb + text]}`, `"kind"`: `exact` or `semantic`, `"split"`:

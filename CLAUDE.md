@@ -1,11 +1,11 @@
-# CLAUDE.md — documentum
+# CLAUDE.md — ctxq
 
-Instructions for agents working **on this repository** (documentum v3, Rust).
-Retrieval rules for agents *using* documentum: [AGENTS.md](AGENTS.md).
+Instructions for agents working **on this repository** (ctxq v3, Rust).
+Retrieval rules for agents *using* ctxq: [AGENTS.md](AGENTS.md).
 
 ## Build & test
 
-- `cargo build --release` — single binary `target/release/documentum`.
+- `cargo build --release` — single binary `target/release/ctxq`.
 - `cargo test --release` — unit + integration (no network).
 - Release builds use thin LTO: a full test rebuild takes ~10 min on a small box.
 
@@ -19,10 +19,10 @@ Report the MRR before/after and the per-question divergences; a change that
 ## Invariants
 
 - Nothing machine-specific in the code: paths, models, services, prefixes go
-  to `documentum.toml` (documented in `documentum.example.toml`, which a test
+  to `ctxq.toml` (documented in `ctxq.example.toml`, which a test
   parses).
-- Own locations only: cache `~/.cache/documentum/`, in-repo `.documentum/`,
-  env `DOCUMENTUM_*`, MCP server name `documentum`.
+- Own locations only: cache `~/.cache/ctxq/`, in-repo `.ctxq/`,
+  env `CTXQ_*`, MCP server name `ctxq`.
 - The code graph (`src/code/`) is ours: no tree-sitter, no third-party parser
   crate. New language = a `LangSpec` + a recognizer (docs/v3/CODEGRAPH.md).
   Bump `EXTRACTOR_VERSION` whenever extraction output changes.

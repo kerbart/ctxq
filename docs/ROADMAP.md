@@ -1,4 +1,8 @@
-# Roadmap — documentum v3
+# Roadmap — ctxq v3
+
+Internal launch critique of the site and the v3 product (2026-10-24), including
+alternative names: [LAUNCH-REVIEW.md](LAUNCH-REVIEW.md). Do not publish that
+file as-is (`kerbart/ctxq` is public).
 
 ## Relevance gate — `bench/eval_docs.py`
 

@@ -1,7 +1,7 @@
 //! Document discovery filters, driven by `[collect]`.
 //!
 //! Filtering is not cosmetic: dependencies, archives and the documentation of
-//! cloned third-party repositories drown a corpus. On documentum's test base,
+//! cloned third-party repositories drown a corpus. On ctxq's test base,
 //! dropping them halved the corpus with no relevance loss, halving memory,
 //! rebuild time and embedding cost. No directory name of any particular
 //! machine is assumed here: every rule comes from the settings.
@@ -132,6 +132,11 @@ impl DiscoveryFilter {
 
     pub fn skip_dir(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        // WalkBuilder is run with hidden(false) so `.github` is indexed; `.git`
+        // is not a document source (objects, hooks, index). Same for other VCS.
+        if matches!(name, ".git" | ".svn" | ".hg") {
+            return true;
+        }
         if path.parent() == Some(self.root.as_path())
             && self.settings.exclude_top.iter().any(|t| t == name)
         {
@@ -148,12 +153,9 @@ impl DiscoveryFilter {
     }
 
     pub fn skip_file(&self, path: &Path, len: u64) -> bool {
-        // documentum's own configuration is tooling, not knowledge.
+        // ctxq's own configuration is tooling, not knowledge.
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if matches!(
-            name,
-            "documentum.toml" | ".documentum.toml" | ".documentumignore"
-        ) {
+        if matches!(name, "ctxq.toml" | ".ctxq.toml" | ".ctxqignore") {
             return true;
         }
         let document = path
@@ -207,7 +209,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         std::fs::write(
-            root.join(".documentumignore"),
+            root.join(".ctxqignore"),
             "vendored\nnotes/private.md # secret\n",
         )
         .unwrap();
@@ -242,6 +244,9 @@ mod tests {
         let f = DiscoveryFilter::new(root, &s).unwrap();
         assert!(f.skip_dir(&root.join("vendored")));
         assert!(f.skip_dir(&root.join("Archive")));
+        std::fs::create_dir_all(root.join(".git")).unwrap();
+        assert!(f.skip_dir(&root.join(".git")));
+        assert!(f.skip_dir(&root.join("mine/.git")));
         assert!(!f.skip_dir(&root.join("mine")));
         // Top level = a project of its own; nested foreign repository = a clone.
         assert!(!f.skip_dir(&root.join("theirs")));

@@ -108,19 +108,19 @@ impl OnnxEmbedder {
     }
 
     fn cache_dir() -> PathBuf {
-        if let Some(p) = std::env::var_os("DOCUMENTUM_ONNX_CACHE") {
+        if let Some(p) = std::env::var_os("CTXQ_ONNX_CACHE") {
             return PathBuf::from(p);
         }
         if let Some(p) = std::env::var_os("FASTEMBED_CACHE_PATH") {
             return PathBuf::from(p);
         }
-        if let Some(p) = std::env::var_os("DOCUMENTUM_HOME_DIR") {
-            return PathBuf::from(p).join(".documentum/models");
+        if let Some(p) = std::env::var_os("CTXQ_HOME_DIR") {
+            return PathBuf::from(p).join(".ctxq/models");
         }
         if let Some(p) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) {
-            return PathBuf::from(p).join(".documentum/models");
+            return PathBuf::from(p).join(".ctxq/models");
         }
-        std::env::temp_dir().join("documentum-models")
+        std::env::temp_dir().join("ctxq-models")
     }
 
     fn load(&self) -> bool {
@@ -244,6 +244,11 @@ impl Embedder {
             #[cfg(feature = "onnx-embeddings")]
             Kind::Onnx(_) => 384,
         }
+    }
+
+    /// Hashed n-grams, not a neural model. Fusion must let BM25 lead.
+    pub fn is_local_hash(&self) -> bool {
+        matches!(self.kind.as_ref(), Kind::Local)
     }
 
     pub fn embed_documents(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {

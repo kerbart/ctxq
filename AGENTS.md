@@ -1,6 +1,6 @@
-# AGENTS.md — using documentum from an agent
+# AGENTS.md — using ctxq from an agent
 
-This workspace is indexed by `documentum` (MCP server name `documentum`). Ask it
+This workspace is indexed by `ctxq` (MCP server name `ctxq`). Ask it
 before grepping or reading files: answers are short, sourced (`path:lines`) and
 cost far fewer tokens than a read loop.
 

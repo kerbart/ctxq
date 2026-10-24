@@ -85,9 +85,7 @@ impl CodeStore {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let conn = Connection::open(path)?;
-        let _ = conn.busy_timeout(std::time::Duration::from_secs(30));
-        let _ = conn.query_row("PRAGMA journal_mode = WAL;", [], |_| Ok(()));
+        let conn = crate::core::sqlite::open(path)?;
         Self::from_connection(conn)
     }
 
@@ -99,6 +97,8 @@ impl CodeStore {
     /// Wraps an already-open connection (e.g. shared with the docs index) and ensures the
     /// `code_*` schema exists. Idempotent: safe to call again on a database already stamped.
     pub fn from_connection(conn: Connection) -> Result<Self> {
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .context("enabling foreign keys")?;
         conn.execute_batch(SCHEMA_SQL)
             .context("creating code graph schema")?;
         Ok(Self { conn })
@@ -183,6 +183,11 @@ impl CodeStore {
         outline: &FileOutline,
     ) -> Result<()> {
         let tx = self.conn.transaction()?;
+        tx.execute(
+            "UPDATE code_calls SET callee_id = NULL
+             WHERE callee_id IN (SELECT id FROM code_symbols WHERE path = ?1)",
+            params![path],
+        )?;
         tx.execute(
             "DELETE FROM code_calls WHERE caller_id IN (SELECT id FROM code_symbols WHERE path = ?1)",
             params![path],
@@ -812,6 +817,10 @@ mod tests {
             .unwrap();
         store.resolve_calls().unwrap();
 
+        store
+            .upsert_file("helper.rs", Lang::Rust, 2, 1, "h1b", &callee)
+            .unwrap();
+        store.resolve_calls().unwrap();
         store.remove_file("helper.rs").unwrap();
 
         let files_left: Vec<String> = store.all_file_paths().unwrap();

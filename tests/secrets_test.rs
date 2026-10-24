@@ -1,17 +1,10 @@
 //! P2 gate: no secret ever reaches the index (trap set).
 
-use documentum::core::hybrid::DocEngine;
-use documentum::core::parse_issues::{list, KIND_QUARANTINED};
+use ctxq::core::hybrid::DocEngine;
+use ctxq::core::parse_issues::{list, KIND_QUARANTINED};
 
 fn sync(engine: &mut DocEngine, root: &std::path::Path) {
-    engine
-        .sync_directory_incremental(
-            root,
-            None::<fn(usize, bool)>,
-            None::<fn(usize, usize)>,
-            None::<fn(usize, usize)>,
-        )
-        .unwrap();
+    engine.sync_directory_incremental(root, None).unwrap();
 }
 
 fn chunks_of(engine: &DocEngine, source: &str) -> i64 {

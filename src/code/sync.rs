@@ -13,7 +13,7 @@ use super::model::{Lang, EXTRACTOR_VERSION};
 use super::store::CodeStore;
 
 /// Ignore behaviour for a sync pass. `.gitignore` is always a baseline rule of the `ignore`
-/// crate; `custom_ignore_files` adds further gitignore-syntax files (`.documentumignore` by
+/// crate; `custom_ignore_files` adds further gitignore-syntax files (`.ctxqignore` by
 /// default) honoured in every directory of the walk.
 #[derive(Debug, Clone)]
 pub struct IgnoreRules {
@@ -27,7 +27,7 @@ impl Default for IgnoreRules {
     fn default() -> Self {
         Self {
             respect_gitignore: true,
-            custom_ignore_files: vec![".documentumignore".to_string()],
+            custom_ignore_files: vec![".ctxqignore".to_string()],
             max_file_bytes: 2 * 1024 * 1024,
         }
     }
@@ -48,6 +48,16 @@ pub struct SyncReport {
 /// Walks `root`, (re-)extracts changed files into `store`, drops files that disappeared, then
 /// resolves calls. Unknown extensions (per `Lang::for_path`) are not visited at all.
 pub fn sync_tree(store: &mut CodeStore, root: &Path, rules: &IgnoreRules) -> Result<SyncReport> {
+    sync_tree_with(store, root, rules, None)
+}
+
+/// Like [`sync_tree`], with a tick after each visited source file.
+pub fn sync_tree_with(
+    store: &mut CodeStore,
+    root: &Path,
+    rules: &IgnoreRules,
+    mut on_file: Option<&mut dyn FnMut(usize, &str)>,
+) -> Result<SyncReport> {
     let stored_version = store.extractor_version()?;
     let force = stored_version != Some(EXTRACTOR_VERSION);
 
@@ -83,6 +93,9 @@ pub fn sync_tree(store: &mut CodeStore, root: &Path, rules: &IgnoreRules) -> Res
             .to_string_lossy()
             .replace('\\', "/");
         report.scanned += 1;
+        if let Some(cb) = on_file.as_mut() {
+            cb(report.scanned, &rel);
+        }
 
         let metadata = entry.metadata()?;
         let size = metadata.len();
@@ -188,11 +201,11 @@ mod tests {
     }
 
     #[test]
-    fn respects_gitignore_and_documentumignore() {
+    fn respects_gitignore_and_ctxqignore() {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         write(root, ".gitignore", "ignored_by_git.rs\n");
-        write(root, ".documentumignore", "ignored_by_custom.rs\n");
+        write(root, ".ctxqignore", "ignored_by_custom.rs\n");
         write(root, "ignored_by_git.rs", "fn a() {}\n");
         write(root, "ignored_by_custom.rs", "fn b() {}\n");
         write(root, "kept.rs", "fn c() {}\n");

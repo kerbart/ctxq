@@ -1,4 +1,4 @@
-# documentum v3: the in-house code graph
+# ctxq v3: the in-house code graph
 
 Designed from scratch for v3, with no third-party parser.
 

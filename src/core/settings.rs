@@ -1,5 +1,5 @@
-//! Configuration: `documentum.toml` at the workspace root (or `$DOCUMENTUM_CONFIG`),
-//! overridden by `DOCUMENTUM_*` environment variables, themselves overridden by
+//! Configuration: `ctxq.toml` at the workspace root (or `$CTXQ_CONFIG`),
+//! overridden by `CTXQ_*` environment variables, themselves overridden by
 //! command-line flags.
 //!
 //! Nothing tied to a particular machine, model or service lives in the code.
@@ -158,10 +158,10 @@ impl EmbedSettings {
 #[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Fusion {
-    /// `cos + α · bm25 / bm25_max(query)` — measured best on documentum's golden set.
+    /// `cos + α · bm25 / bm25_max(query)` — measured best on ctxq's golden set.
     #[default]
     Score,
-    /// Reciprocal Rank Fusion of FTS5 and vector ranks (inherited from documentum).
+    /// Reciprocal Rank Fusion of FTS5 and vector ranks (inherited from ctxq).
     Rrf,
 }
 
@@ -251,7 +251,7 @@ impl Default for CollectSettings {
                 .map(|s| s.to_string())
                 .collect(),
             exclude_top: Vec::new(),
-            exclude_globs_file: Some(".documentumignore".into()),
+            exclude_globs_file: Some(".ctxqignore".into()),
             exclude_globs: Vec::new(),
             own_remotes: Vec::new(),
             respect_gitignore: true,
@@ -348,7 +348,7 @@ pub enum StoreBackend {
     Local,
     /// A Qdrant collection over HTTP.
     Qdrant,
-    /// Another documentum instance (its daemon's HTTP API); federation only.
+    /// Another ctxq instance (its daemon's HTTP API); federation only.
     Peer,
 }
 
@@ -368,7 +368,7 @@ pub struct StoreSettings {
     pub backend: StoreBackend,
     pub mode: StoreMode,
     pub url: String,
-    /// Collection (Qdrant). Empty = `documentum`.
+    /// Collection (Qdrant). Empty = `ctxq`.
     pub collection: String,
     /// NAME of the environment variable holding the API key.
     pub api_key_env: Option<String>,
@@ -414,7 +414,7 @@ impl StoreSettings {
 
     pub fn collection_name(&self) -> String {
         if self.collection.is_empty() {
-            "documentum".into()
+            "ctxq".into()
         } else {
             self.collection.clone()
         }
@@ -437,15 +437,14 @@ pub struct DaemonSettings {
     pub scan_interval_secs: u64,
 }
 
-#[allow(clippy::derivable_impls)]
 impl Default for DaemonSettings {
     fn default() -> Self {
         Self {
             socket: None,
             http: None,
             http_token_env: None,
-            sync_interval_secs: 0,
-            scan_interval_secs: 0,
+            sync_interval_secs: 60,
+            scan_interval_secs: 300,
         }
     }
 }
@@ -482,12 +481,12 @@ pub struct Settings {
 }
 
 impl Settings {
-    /// `$DOCUMENTUM_CONFIG`, else `<root>/documentum.toml`, else
-    /// `<root>/.documentum.toml`, else defaults; then environment overrides.
+    /// `$CTXQ_CONFIG`, else `<root>/ctxq.toml`, else
+    /// `<root>/.ctxq.toml`, else defaults; then environment overrides.
     pub fn load(root: &Path) -> Result<Self> {
-        let candidates: Vec<PathBuf> = match env("DOCUMENTUM_CONFIG") {
+        let candidates: Vec<PathBuf> = match env("CTXQ_CONFIG") {
             Some(p) => vec![PathBuf::from(p)],
-            None => vec![root.join("documentum.toml"), root.join(".documentum.toml")],
+            None => vec![root.join("ctxq.toml"), root.join(".ctxq.toml")],
         };
         let mut settings = Self::default();
         if let Some(path) = candidates.into_iter().find(|p| p.is_file()) {
@@ -496,8 +495,8 @@ impl Settings {
             settings =
                 toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
             settings.source_file = Some(path);
-        } else if let Some(p) = env("DOCUMENTUM_CONFIG") {
-            bail!("DOCUMENTUM_CONFIG points to a missing file: {p}");
+        } else if let Some(p) = env("CTXQ_CONFIG") {
+            bail!("CTXQ_CONFIG points to a missing file: {p}");
         }
         settings.apply_env()?;
         Ok(settings)
@@ -505,67 +504,67 @@ impl Settings {
 
     /// Environment wins over the file: handy for benches and containers.
     fn apply_env(&mut self) -> Result<()> {
-        // Inherited documentum variable kept as a fallback.
-        if let Some(v) = env("DOCUMENTUM_EMBEDDINGS") {
+        // Inherited ctxq variable kept as a fallback.
+        if let Some(v) = env("CTXQ_EMBEDDINGS") {
             self.embed.backend = v.parse()?;
         }
-        if let Some(v) = env("DOCUMENTUM_EMBED_URLS") {
+        if let Some(v) = env("CTXQ_EMBED_URLS") {
             self.embed.urls = list(&v)
                 .into_iter()
                 .map(|u| u.trim_end_matches('/').to_string())
                 .collect();
         }
-        if let Some(v) = env("DOCUMENTUM_EMBED_MODEL") {
+        if let Some(v) = env("CTXQ_EMBED_MODEL") {
             self.embed.model = v;
         }
-        if let Some(v) = env("DOCUMENTUM_EMBED_API_KEY_ENV") {
+        if let Some(v) = env("CTXQ_EMBED_API_KEY_ENV") {
             self.embed.api_key_env = Some(v);
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_EMBED_MAX_CHARS") {
+        if let Some(v) = env_parsed("CTXQ_EMBED_MAX_CHARS") {
             self.embed.max_chars = v;
         }
-        if let Some(v) = env_parsed::<usize>("DOCUMENTUM_EMBED_CONCURRENCY") {
+        if let Some(v) = env_parsed::<usize>("CTXQ_EMBED_CONCURRENCY") {
             self.embed.concurrency = v.max(1);
         }
-        if let Some(v) = env_parsed::<usize>("DOCUMENTUM_EMBED_BATCH") {
+        if let Some(v) = env_parsed::<usize>("CTXQ_EMBED_BATCH") {
             self.embed.batch = v.max(1);
         }
-        if let Some(v) = env("DOCUMENTUM_FUSION") {
+        if let Some(v) = env("CTXQ_FUSION") {
             self.search.fusion = if v.eq_ignore_ascii_case("rrf") {
                 Fusion::Rrf
             } else {
                 Fusion::Score
             };
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_ALPHA") {
+        if let Some(v) = env_parsed("CTXQ_ALPHA") {
             self.search.alpha = v;
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_ALPHA_ID") {
+        if let Some(v) = env_parsed("CTXQ_ALPHA_ID") {
             self.search.alpha_id = v;
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_POOL") {
+        if let Some(v) = env_parsed("CTXQ_POOL") {
             self.search.pool = v;
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_LEX_POOL") {
+        if let Some(v) = env_parsed("CTXQ_LEX_POOL") {
             self.search.lex_pool = v;
         }
-        if let Some(v) = env_parsed("DOCUMENTUM_MAX_PER_SOURCE") {
+        if let Some(v) = env_parsed("CTXQ_MAX_PER_SOURCE") {
             self.search.max_per_source = v;
         }
-        if let Some(v) = env("DOCUMENTUM_STORE") {
+        if let Some(v) = env("CTXQ_STORE") {
             self.store.backend = match v.to_ascii_lowercase().as_str() {
                 "local" => StoreBackend::Local,
                 "qdrant" => StoreBackend::Qdrant,
-                other => bail!("DOCUMENTUM_STORE: unknown store '{other}' (local, qdrant)"),
+                other => bail!("CTXQ_STORE: unknown store '{other}' (local, qdrant)"),
             };
         }
-        if let Some(v) = env("DOCUMENTUM_STORE_URL") {
+        if let Some(v) = env("CTXQ_STORE_URL") {
             self.store.url = v;
         }
-        if let Some(v) = env("DOCUMENTUM_STORE_COLLECTION") {
+        if let Some(v) = env("CTXQ_STORE_COLLECTION") {
             self.store.collection = v;
         }
-        if let Some(v) = env("DOCUMENTUM_ROOTS") {
+        if let Some(v) = env("CTXQ_ROOTS") {
             self.collect.roots = list(&v);
         }
         Ok(())
@@ -610,13 +609,15 @@ mod tests {
 
     #[test]
     fn documented_example_parses_and_matches_defaults() {
-        let s: Settings = toml::from_str(include_str!("../../documentum.example.toml")).unwrap();
+        let s: Settings = toml::from_str(include_str!("../../ctxq.example.toml")).unwrap();
         let d = Settings::default();
         assert_eq!(s.embed.backend, d.embed.backend);
         assert_eq!(s.search.alpha, d.search.alpha);
         assert_eq!(s.collect.max_document_bytes, d.collect.max_document_bytes);
         assert_eq!(s.collect.exclude_dir_names, d.collect.exclude_dir_names);
         assert_eq!(s.scan.output_dir, d.scan.output_dir);
+        assert_eq!(s.daemon.sync_interval_secs, d.daemon.sync_interval_secs);
+        assert_eq!(s.daemon.scan_interval_secs, d.daemon.scan_interval_secs);
         assert!(s.scan.source.is_empty() && s.store.federate.is_empty());
     }
 
@@ -627,6 +628,8 @@ mod tests {
         assert_eq!(s.collect.roots, ["."]);
         assert!(s.secrets.enabled);
         assert_eq!(s.table_row_dirs(), ["docs/generated"]);
+        assert_eq!(s.daemon.sync_interval_secs, 60);
+        assert_eq!(s.daemon.scan_interval_secs, 300);
     }
 
     #[test]

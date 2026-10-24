@@ -3,7 +3,7 @@
 //! Loading the index (chunks, vectors, inverted index) costs about a second;
 //! a query on a warm index costs milliseconds. The daemon keeps one engine warm
 //! behind a unix socket (and, optionally, a small HTTP API for federated
-//! peers); `documentum q` talks to it, starts it when absent, and falls back to
+//! peers); `ctxq q` talks to it, starts it when absent, and falls back to
 //! an in-process search when it cannot.
 //!
 //! Protocol (socket): one JSON object per line, `{"op": "search", ...}` →
@@ -225,7 +225,7 @@ fn http_one(
 }
 
 fn sync_code(paths: &ProjectPaths, settings: &Settings) {
-    if let Err(e) = crate::cli::commands::sync_code_graph(paths, settings) {
+    if let Err(e) = crate::cli::commands::sync_code_graph(paths, settings, None) {
         tracing::warn!("code sync failed: {e:#}");
     }
 }
@@ -233,8 +233,11 @@ fn sync_code(paths: &ProjectPaths, settings: &Settings) {
 /// Periodic re-sync / re-scan in a separate engine, so queries keep being
 /// answered meanwhile; the worker reloads when `last_sync` moves.
 /// The code graph shares `docs.db` and is refreshed on the same cadence.
+///
+/// Do not write on start: `search` autostarts the daemon, and an immediate
+/// `sync_code` races the first queries (`SQLITE_BUSY` / "database is locked").
+/// The index is already warm from `setup` / `sync`; wait one interval.
 fn refresher(paths: ProjectPaths, settings: Settings, embedder: Embedder) {
-    sync_code(&paths, &settings);
     let sync_every = settings.daemon.sync_interval_secs;
     let scan_every = settings.daemon.scan_interval_secs;
     if sync_every == 0 && scan_every == 0 {
@@ -253,16 +256,8 @@ fn refresher(paths: ProjectPaths, settings: Settings, embedder: Embedder) {
         }
         if sync_due {
             last_sync = Instant::now();
-            let res = DocEngine::open_with_embedder(&paths.docs_db, embedder.clone()).and_then(
-                |mut e| {
-                    e.sync_directory_incremental(
-                        &paths.root_dir,
-                        None::<fn(usize, bool)>,
-                        None::<fn(usize, usize)>,
-                        None::<fn(usize, usize)>,
-                    )
-                },
-            );
+            let res = DocEngine::open_with_embedder(&paths.docs_db, embedder.clone())
+                .and_then(|mut e| e.sync_directory_incremental(&paths.root_dir, None));
             if let Err(e) = res {
                 tracing::warn!("scheduled sync failed: {e:#}");
             }
@@ -275,7 +270,7 @@ pub fn run_daemon(target: Option<&Path>, embedder: Embedder, http: Option<String
     let paths = ProjectPaths::discover(target)?;
     if !paths.docs_db.exists() {
         bail!(
-            "no index for {}: run `documentum sync` first",
+            "no index for {}: run `ctxq sync` first",
             paths.root_dir.display()
         );
     }
@@ -312,7 +307,7 @@ pub fn run_daemon(target: Option<&Path>, embedder: Embedder, http: Option<String
         std::thread::spawn(move || refresher(p, s, e));
     }
     eprintln!(
-        "documentum daemon: {} (pid {})",
+        "ctxq daemon: {} (pid {})",
         sock.display(),
         std::process::id()
     );
@@ -399,7 +394,7 @@ pub fn stop_daemon(paths: &ProjectPaths, settings: &Settings) -> Result<bool> {
 
 // ------------------------------------------------------------------ output
 
-/// First meaningful lines of a passage, heading skipped (documentum format).
+/// First meaningful lines of a passage, heading skipped (ctxq format).
 fn snippet(text: &str, max_lines: usize) -> String {
     let mut lines: Vec<&str> = crate::core::doctext::split_lines(text);
     if lines
@@ -482,6 +477,13 @@ pub fn format_results(query: &str, data: &Value, full: bool, lang_fr: bool) -> S
             lines[1].as_u64().unwrap_or(0)
         ));
     }
+    if data.get("upgrade").is_some_and(|u| u.is_object()) {
+        let files = data["upgrade"]["files"].as_u64().unwrap_or(0) as usize;
+        let chunks = data["upgrade"]["chunks"].as_u64().unwrap_or(0) as usize;
+        if let Some(u) = crate::core::embed_hint::Upgrade::assess(files, chunks, true) {
+            out.push(u.render_line());
+        }
+    }
     out.join("\n")
 }
 
@@ -525,5 +527,22 @@ mod tests {
             "## Résultats pour : \"port de myapp\"\n\n[1] score 0.967 — myapp > Ce qu'est myapp\n    App single-user.\n    - port **3917**\n    → ~/myapp/CLAUDE.md:12-52\n"
         );
         assert_eq!(legacy_json(&data)[0]["line_end"], 52);
+    }
+
+    #[test]
+    fn search_footer_mentions_ollama_on_a_large_local_hash_index() {
+        let data = json!({
+            "results": [],
+            "upgrade": {
+                "files": 400,
+                "chunks": 8000,
+                "neural": true,
+                "store": false,
+            }
+        });
+        let out = format_results("x", &data, false, false);
+        assert!(out.contains("local-hash"));
+        assert!(out.contains("ctxq doctor"));
+        assert!(!out.contains("backend = \"ollama\""));
     }
 }

@@ -1,12 +1,12 @@
 [package]
-name = "documentum"
+name = "ctxq"
 version = "3.0.1"
 edition = "2021"
 rust-version = "1.88"
 authors = ["Damien Kerbart"]
 description = "Indexing & retrieval for agents: docs (hybrid search), home-grown code graph, inventories — MCP, daemon, one binary"
 license = "MIT"
-repository = "https://github.com/kerbart/documentum"
+repository = "https://github.com/kerbart/ctxq"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

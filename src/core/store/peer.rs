@@ -1,4 +1,4 @@
-//! Another documentum instance, queried through its daemon's HTTP API
+//! Another ctxq instance, queried through its daemon's HTTP API
 //! (`POST /search`). Read-only by nature: the peer embeds the query with its
 //! own model, so no vector crosses the wire and models need not match.
 

@@ -1,19 +1,21 @@
-# documentum
+# ctxq
 
-**Your docs and code, sorted and indexed _for your AI agent_ — one binary.**
-It stops digging through folders: it asks, and gets back small, **sourced
-passages** over MCP, a resident daemon or the CLI.
+**Ask the index, get the line.** Your docs, live inventories and code,
+indexed _for your AI agent_ — one binary. It stops digging through folders:
+it asks, and gets back small, **sourced passages** over MCP, a resident
+daemon or the CLI.
 
 - **No lost context**: the few passages it needs, with their source, instead of
   whole files or guessed paths.
-- **Always-current docs**: the index re-syncs incrementally as files change,
-  and `status` tells the agent how fresh it is.
+- **Always-current docs**: the daemon re-syncs docs every 60s and inventories
+  every 5 min; `status` tells the agent how fresh the index is.
 
-![documentum: a pile of documents transformed into a structured index](https://documentum.dev/hero-flat.webp)
+![ctxq: a pile of documents transformed into a structured index](https://ctxq.dev/hero-flat.webp)
 
-- **Relevant**: hybrid search — dense vectors **and** a global BM25, fused by
-  score, with identifier-aware weighting. Exact identifiers (a port, a
-  container, a domain) are found as reliably as paraphrased questions.
+- **Relevant**: a global BM25 with identifier-aware weighting, plus dense
+  cosine when you plug a real embedder. Offline, BM25 leads (the built-in
+  hash is a weak rerank, not a neural model). Exact identifiers — a port, a
+  container, a domain — hit either way.
 - **Local first**: the index is a single SQLite file. Works offline with the
   built-in embedder; plug Ollama or any OpenAI-compatible server for a real
   model. Vectors can live in Qdrant, and other bases can be federated.
@@ -38,8 +40,8 @@ graph (symbols, callers, change impact, doc ↔ code links —
   imports, doc comments, doc ↔ code links. Rust, TS/JS, Python, Go, Java,
   Kotlin, C#.
 - **Ranking** — dense cosine + a global BM25, fused by score:
-  `cosine + α · bm25 / bm25_max`, with α = 0.5 for identifier-like queries and
-  0.2 for natural language.
+  `cosine + α · bm25 / bm25_max`. Identifier-like queries get a higher α.
+  With the built-in hash embedder, α is raised so BM25 leads.
 
 ## Measured
 
@@ -57,24 +59,33 @@ history: [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Install
 
-One binary, no runtime dependency. Prebuilt releases (Linux x86_64/arm64
-static, macOS Intel/Apple silicon) are built by GitHub Actions and verified
-against the release's `SHA256SUMS` by the installer:
+One binary, no runtime dependency. Source and releases live at
+[`github.com/kerbart/ctxq`](https://github.com/kerbart/ctxq). The one-liner
+downloads a SHA-256-verified archive from GitHub Releases (ctxq.dev mirrors
+them), installs it to `~/.local/bin`, and puts `ctxq` on **this** shell's PATH.
+Linux x86_64 is musl-static (Alpine and glibc distros). Linux arm64 and macOS
+ship from the same command.
 
 ```bash
-curl -fsSL https://documentum.dev/install.sh | bash      # Linux, macOS, WSL → ~/.local/bin
+curl -fsSL https://ctxq.dev/install.sh | sh && . "$HOME/.ctxq/env"
+# same installer: https://raw.githubusercontent.com/kerbart/ctxq/main/install.sh
 ```
 
-Native Windows build: coming soon. Use WSL meanwhile.
+Then, from a project:
 
-`DOCUMENTUM_VERSION=v3.0.1` pins a release, `DOCUMENTUM_BINDIR` changes the
-destination. Project page: <https://documentum.dev>.
+```bash
+ctxq setup
+ctxq search "how do I deploy the api?"
+```
+
+Windows: use WSL. `CTXQ_BINDIR` changes the destination. Project page:
+<https://ctxq.dev>.
 
 From source:
 
 ```bash
-cargo install --git https://github.com/kerbart/documentum.git --locked
-# or: cargo build --release            # target/release/documentum
+cargo install --git https://github.com/kerbart/ctxq.git --locked
+# or: cargo build --release            # target/release/ctxq
 # optional embedded ONNX model:  cargo build --release --features onnx-embeddings
 ```
 
@@ -86,23 +97,48 @@ does the rest). `ci.yml` runs `cargo test --release` on every push.
 
 ```bash
 cd my-workspace
-documentum setup                      # 1. index + register documentum in your agents
-documentum search "how do I deploy the api?"   # 2. ask it yourself
+ctxq setup                      # 1. index + register ctxq in your agents
+ctxq search "how do I deploy the api?"   # 2. ask it yourself
 ```
 
 That is all. **Your agents** (Claude Code, Codex, Cursor, VS Code, Zed…) now
-list documentum among their tools — restart them once. You never start the
-MCP server yourself: the editor launches `documentum mcp` in the background
+list ctxq among their tools — restart them once. You never start the
+MCP server yourself: the editor launches `ctxq mcp` in the background
 and talks to it over stdin/stdout.
 
-`search` keeps the index warm in a small background daemon it starts on first
-use (milliseconds per query afterwards); `--no-daemon` searches in-process.
+## Where the index lives
+
+One index **per workspace root** (the directory you ran `ctxq setup` in).
+It sits outside the tree, at `~/.cache/ctxq/<name>-<hash>/docs.db` (or
+`<root>/.ctxq/` if you passed `--in-repo`). `ctxq doctor` prints the path.
+
+`ctxq setup --force-home` indexes **all of `$HOME`**. That is a different
+index from a project inside it:
+
+```
+ctxq setup --force-home          # index A: ~/.cache/ctxq/<you>-…/docs.db
+cd ~/engie && ctxq setup         # index B: ~/.cache/ctxq/engie-…/docs.db
+```
+
+Two indexes. They do not merge. Searching from `~/engie` uses B; searching
+from `$HOME` uses A (which also contains the engie files as a subset).
+Markdown, office, PDF and code are indexed; `.git`, archives, secrets and
+gitignored files are skipped.
+
+Codex is registered automatically when `~/.codex/` exists (`ctxq setup`
+writes `.codex/config.toml` in the project and `~/.codex/config.toml`).
+Restart Codex, then `/mcp`. Do not run `ctxq` inside the Codex shell: its
+bwrap sandbox cannot launch it; the MCP tools are the path that works.
+
+`search` keeps the index warm in a background daemon it starts on first use
+(milliseconds per query afterwards; docs re-sync every 60s). `--no-daemon`
+searches in-process.
 Filters: `--tag legal --type pdf --since 2026-01-01 --path docs/`, `--json` for
-scripts. `documentum sync` refreshes the index after big changes (the daemon
+scripts. `ctxq sync` refreshes the index after big changes (the daemon
 also re-syncs periodically).
 
-For real semantic search, put a `documentum.toml` at the workspace root (or
-point `$DOCUMENTUM_CONFIG` at one) and pick an embedding server:
+For real semantic search, put a `ctxq.toml` at the workspace root (or
+point `$CTXQ_CONFIG` at one) and pick an embedding server:
 
 ```toml
 # A local or LAN server — no credentials
@@ -125,7 +161,7 @@ api_key_env = "OPENAI_API_KEY"        # the NAME of a variable, not the key
 export OPENAI_API_KEY="sk-..."        # shell profile or secret manager
 ```
 
-**The key never goes in the file**: `documentum.toml` can be committed, the key
+**The key never goes in the file**: `ctxq.toml` can be committed, the key
 stays in your environment and is sent as `Authorization: Bearer` to the
 embedding server only. Same pattern for Qdrant, federated peers
 (`api_key_env`) and the daemon's HTTP API (`http_token_env`).
@@ -139,7 +175,7 @@ embedding server only. Same pattern for Qdrant, federated peers
 | Inventories | `[[scan.source]]`: any command's output, or built-in `docker`, `systemd`, `ports`, `projects`, `scripts` collectors; tables indexed row by row |
 | Code | Rust, TypeScript/JavaScript, Python, Go, Java, Kotlin, C#: symbols, signatures, doc comments, callers/callees, bodies, change impact, doc ↔ code links (`[code] enabled`) |
 
-Discovery honours `roots` (in priority order), `.documentumignore`,
+Discovery honours `roots` (in priority order), `.ctxqignore`,
 `.gitignore`, size limits, and skips third-party clones (`own_remotes`).
 
 ## Agent surface
@@ -168,8 +204,8 @@ Optional — `search` starts it on demand. Run it yourself to expose the HTTP
 API (federation, other tools) or to keep it up permanently:
 
 ```bash
-documentum daemon --http 127.0.0.1:7700
-documentum daemon --stop
+ctxq daemon --http 127.0.0.1:7700
+ctxq daemon --stop
 ```
 
 A warm query costs a few milliseconds plus the query embedding (cached,
@@ -184,19 +220,19 @@ url = "http://localhost:6333"
 collection = "my-docs"
 
 [[store.federate]]                    # read-only bases queried with every search
-backend = "peer"                      # another documentum daemon (POST /search)
+backend = "peer"                      # another ctxq daemon (POST /search)
 url = "http://other-host:7700"
 name = "team-docs"
 weight = 0.8
 ```
 
-`documentum store push` uploads existing vectors without re-embedding.
+`ctxq store push` uploads existing vectors without re-embedding.
 
 ## Configuration
 
-Precedence: command-line flags > `DOCUMENTUM_*` environment > `documentum.toml`
-(or `.documentum.toml`, or `$DOCUMENTUM_CONFIG`) > defaults. Every key is
-documented in [documentum.example.toml](documentum.example.toml).
+Precedence: command-line flags > `CTXQ_*` environment > `ctxq.toml`
+(or `.ctxq.toml`, or `$CTXQ_CONFIG`) > defaults. Every key is
+documented in [ctxq.example.toml](ctxq.example.toml).
 
 ## Measuring
 

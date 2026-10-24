@@ -10,7 +10,7 @@ use anyhow::{bail, Context, Result};
 use serde_json::{json, Value};
 
 use crate::cli::commands;
-use crate::cli::config::ProjectPaths;
+use crate::cli::config::{self, ProjectPaths};
 use crate::code::query::{self, SymbolHit};
 use crate::code::store::CodeStore;
 use crate::core::hybrid::DocEngine;
@@ -21,11 +21,9 @@ use crate::mcp::server::{McpServer, WorkspaceConfig};
 use crate::mcp::tools::docs;
 use crate::setup::apply::Outcome;
 use crate::setup::rules::{self, agents_md_body, pointer_body};
-use crate::setup::{
-    apply_client, client_by_id, detect_project_clients, ClientSpec, Scope, CLIENTS,
-};
+use crate::setup::{apply_client, client_by_id, detect_setup_clients, ClientSpec, Scope, CLIENTS};
 
-const SKILL_MD: &str = include_str!("templates/documentum-investigate.SKILL.md");
+const SKILL_MD: &str = include_str!("templates/ctxq-investigate.SKILL.md");
 
 struct Loaded {
     configs: Vec<WorkspaceConfig>,
@@ -58,9 +56,9 @@ fn load_workspaces(target: Option<&Path>, specs: &[String], embedder: Embedder) 
     for (name, paths) in entries {
         if !paths.docs_db.exists() {
             // Start anyway (an MCP client that sees the server die gives up); `status` says
-            // the index is empty and `code_sync` / `documentum sync` fill it.
+            // the index is empty and `code_sync` / `ctxq sync` fill it.
             eprintln!(
-                "documentum: no index yet for {} ({}); run `documentum sync` to fill it",
+                "ctxq: no index yet for {} ({}); run `ctxq sync` to fill it",
                 name,
                 paths.root_dir.display()
             );
@@ -92,10 +90,7 @@ pub fn run_serve(target: Option<&Path>, workspaces: &[String], embedder: Embedde
     let names: Vec<String> = loaded.configs.iter().map(|w| w.name.clone()).collect();
     let backend = Arc::new(WorkspaceDocsBackend::new(loaded.engines));
     let server = McpServer::new(loaded.configs, backend)?;
-    eprintln!(
-        "documentum serve (stdio) — workspaces : {}",
-        names.join(", ")
-    );
+    eprintln!("ctxq serve (stdio) — workspaces : {}", names.join(", "));
     let stdin = io::stdin();
     let stdout = io::stdout();
     server.serve(stdin.lock(), stdout.lock())?;
@@ -111,6 +106,7 @@ pub struct SetupOptions<'a> {
     pub skill: bool,
     pub hooks: bool,
     pub in_repo: bool,
+    pub force_home: bool,
     pub embedder: Embedder,
 }
 
@@ -119,19 +115,22 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
         Some(path) => std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf()),
         None => std::env::current_dir().context("current directory")?,
     };
+    if !opts.uninstall {
+        config::refuse_home(&root, opts.force_home)?;
+    }
     if opts.in_repo {
-        std::fs::create_dir_all(root.join(".documentum"))?;
+        std::fs::create_dir_all(root.join(".ctxq"))?;
     }
     let paths = ProjectPaths::discover(Some(&root))?;
     if !opts.uninstall {
-        commands::run_index(Some(&paths.root_dir), opts.embedder)?;
+        commands::run_index(Some(&paths.root_dir), opts.embedder, opts.force_home)?;
     }
 
     let selected = resolve_clients(&paths.root_dir, opts.clients)?;
     let command = match opts.command {
         Some(path) => path.to_string_lossy().into_owned(),
         None => std::env::current_exe()
-            .context("binaire courant")?
+            .context("current binary")?
             .to_string_lossy()
             .into_owned(),
     };
@@ -143,9 +142,10 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
     if selected.is_empty() {
         println!("no client to register");
     }
+    let mut registered_codex = false;
     for spec in &selected {
         let (base, repo_root) = match spec.scope {
-            Scope::Project => (paths.root_dir.clone(), None),
+            Scope::Project => (paths.root_dir.clone(), Some(repo.as_str())),
             Scope::User => {
                 let home = home
                     .as_deref()
@@ -164,9 +164,17 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
         )
         .map_err(|e| anyhow::anyhow!(e))?;
         println!("{} : {}", spec.id, outcome_line(&outcome));
+        if spec.id == "codex" || spec.id == "codex-user" {
+            registered_codex = true;
+        }
         if let Outcome::Rejected(reason) = &outcome {
             bail!("{} : {reason}", spec.id);
         }
+    }
+    if registered_codex && !opts.uninstall {
+        println!(
+            "Codex: restart the session, then /mcp. Do not run `ctxq` in the Codex shell — the bwrap sandbox blocks it; MCP is the path that works."
+        );
     }
 
     if opts.rules && !opts.uninstall {
@@ -186,8 +194,8 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
 
     if opts.skill {
         for relative in [
-            ".claude/skills/documentum-investigate/SKILL.md",
-            ".agents/skills/documentum-investigate/SKILL.md",
+            ".claude/skills/ctxq-investigate/SKILL.md",
+            ".agents/skills/ctxq-investigate/SKILL.md",
         ] {
             let path = paths.root_dir.join(relative);
             if opts.uninstall {
@@ -246,7 +254,7 @@ fn resolve_clients(root: &Path, requested: &[String]) -> Result<Vec<&'static Cli
     let mut out: Vec<&ClientSpec> = Vec::new();
     for id in &requested {
         if id == "all" {
-            for spec in detect_project_clients(root) {
+            for spec in detect_setup_clients(root, home_dir().as_deref()) {
                 if !out.iter().any(|s| s.id == spec.id) {
                     out.push(spec);
                 }
@@ -291,7 +299,7 @@ fn install_hook(root: &Path, command: &str, uninstall: bool) -> Result<()> {
     if uninstall {
         if hook.is_file() {
             let text = std::fs::read_to_string(&hook).unwrap_or_default();
-            if text.contains("documentum sync") {
+            if text.contains("ctxq sync") {
                 std::fs::remove_file(&hook)?;
                 println!("hook removed: {}", hook.display());
             }
@@ -301,7 +309,7 @@ fn install_hook(root: &Path, command: &str, uninstall: bool) -> Result<()> {
     if let Some(parent) = hook.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let script = format!("#!/bin/sh\n# documentum\n{command:?} sync >/dev/null 2>&1 &\n");
+    let script = format!("#!/bin/sh\n# ctxq\n{command:?} sync >/dev/null 2>&1 &\n");
     std::fs::write(&hook, script)?;
     #[cfg(unix)]
     {
@@ -322,10 +330,7 @@ pub fn run_changes(
 ) -> Result<()> {
     let paths = ProjectPaths::discover(target)?;
     if !paths.docs_db.exists() {
-        bail!(
-            "no index for {}; run `documentum sync`",
-            paths.root_dir.display()
-        );
+        bail!("no index for {}; run `ctxq sync`", paths.root_dir.display());
     }
     let diff = if let Some(base) = base {
         git_diff(&paths.root_dir, base, head.unwrap_or("HEAD"), paths_filter)?
@@ -438,10 +443,7 @@ pub fn run_explore(
 ) -> Result<()> {
     let paths = ProjectPaths::discover(target)?;
     if !paths.docs_db.exists() {
-        bail!(
-            "no index for {}; run `documentum sync`",
-            paths.root_dir.display()
-        );
+        bail!("no index for {}; run `ctxq sync`", paths.root_dir.display());
     }
     let store = CodeStore::open(&paths.docs_db)?;
     let hits = query::find(&store, symbol)?;

@@ -1,26 +1,26 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use documentum::cli::commands::{
+use ctxq::cli::commands::{
     run_agent_op, run_daemon_stop, run_doctor, run_export_map, run_import_vectors, run_index,
     run_ingest, run_q, run_scan, run_search, run_stats, run_store, run_sync, QRequest,
     SearchRequest,
 };
-use documentum::cli::integration::{
+use ctxq::cli::integration::{
     run_changes, run_context, run_explore, run_serve, run_setup, SetupOptions,
 };
-use documentum::core::docmeta::SearchFilters;
+use ctxq::core::docmeta::SearchFilters;
 use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "documentum",
-    author = "documentum contributors",
-    version = documentum::VERSION,
-    long_version = documentum::long_version(),
-    about = "Local documentation index: hybrid search, inventories, daemon"
+    name = "ctxq",
+    author = "ctxq contributors",
+    version = ctxq::VERSION,
+    long_version = ctxq::long_version(),
+    about = "Ask the index, get the line — hybrid search, inventories, code graph"
 )]
 struct Cli {
     // Not `global`: `search` and `q` already have a `--path` (filter prefix).
-    // The root goes before the subcommand: `documentum --path ROOT search …`.
+    // The root goes before the subcommand: `ctxq --path ROOT search …`.
     #[arg(short, long, help = "Workspace root (default: current directory)")]
     path: Option<PathBuf>,
 
@@ -34,9 +34,17 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     #[command(about = "Full reindex of the documentation")]
-    Index,
+    Index {
+        /// Allow indexing $HOME (refused by default).
+        #[arg(long)]
+        force_home: bool,
+    },
     #[command(about = "Incremental sync of the documentation")]
-    Sync,
+    Sync {
+        /// Allow indexing $HOME (refused by default).
+        #[arg(long)]
+        force_home: bool,
+    },
     #[command(about = "Index health: integrity, coverage, freshness")]
     Doctor {
         #[arg(long, value_name = "NAME=PATH")]
@@ -183,7 +191,7 @@ enum Commands {
     },
     #[command(about = "Registers the MCP server with clients")]
     Setup {
-        /// Client (`all` or an identifier: claude, cursor, vscode, gemini, …). Repeatable.
+        /// Client (`all` or an identifier: claude, cursor, vscode, gemini, codex, …). Repeatable. Default `all` picks project clients and Codex if ~/.codex exists.
         #[arg(long = "client", visible_alias = "agent", value_name = "CLIENT")]
         client: Vec<String>,
         #[arg(long)]
@@ -199,6 +207,9 @@ enum Commands {
         hooks: bool,
         #[arg(long)]
         in_repo: bool,
+        /// Allow indexing $HOME (refused by default).
+        #[arg(long)]
+        force_home: bool,
     },
     #[command(about = "Impact of a diff: symbols, callers, documents")]
     Changes {
@@ -254,7 +265,7 @@ pub enum EmbeddingsArg {
     Openai,
 }
 
-impl From<EmbeddingsArg> for documentum::core::settings::EmbedBackend {
+impl From<EmbeddingsArg> for ctxq::core::settings::EmbedBackend {
     fn from(a: EmbeddingsArg) -> Self {
         match a {
             EmbeddingsArg::Local => Self::Local,
@@ -268,12 +279,12 @@ impl From<EmbeddingsArg> for documentum::core::settings::EmbedBackend {
 fn resolve_embedder(
     path: Option<&std::path::Path>,
     backend: Option<EmbeddingsArg>,
-) -> anyhow::Result<documentum::core::vector::Embedder> {
-    let root = documentum::cli::config::ProjectPaths::discover(path)
+) -> anyhow::Result<ctxq::core::vector::Embedder> {
+    let root = ctxq::cli::config::ProjectPaths::discover(path)
         .map(|p| p.root_dir)
         .or_else(|_| std::env::current_dir())?;
-    let settings = documentum::core::settings::Settings::load(&root)?;
-    documentum::core::vector::Embedder::from_settings(&settings, backend.map(Into::into))
+    let settings = ctxq::core::settings::Settings::load(&root)?;
+    ctxq::core::vector::Embedder::from_settings(&settings, backend.map(Into::into))
 }
 
 fn filters_of(
@@ -292,11 +303,7 @@ fn filters_of(
 
 fn main_pdf_child() -> Option<anyhow::Result<()>> {
     let args: Vec<std::ffi::OsString> = std::env::args_os().collect();
-    if args
-        .get(1)
-        .map(|a| a == documentum::core::convert::PDF_CHILD_ARG)
-        != Some(true)
-    {
+    if args.get(1).map(|a| a == ctxq::core::convert::PDF_CHILD_ARG) != Some(true) {
         return None;
     }
     #[cfg(feature = "pdf")]
@@ -304,10 +311,7 @@ fn main_pdf_child() -> Option<anyhow::Result<()>> {
         let (Some(i), Some(o)) = (args.get(2), args.get(3)) else {
             return Some(Err(anyhow::anyhow!("usage: __pdf-text <in> <out>")));
         };
-        Some(documentum::core::convert::pdf_text_child(
-            i.as_ref(),
-            o.as_ref(),
-        ))
+        Some(ctxq::core::convert::pdf_text_child(i.as_ref(), o.as_ref()))
     }
     #[cfg(not(feature = "pdf"))]
     Some(Err(anyhow::anyhow!("built without the 'pdf' feature")))
@@ -328,18 +332,20 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Index => run_index(
+        Commands::Index { force_home } => run_index(
             cli.path.as_deref(),
             resolve_embedder(cli.path.as_deref(), cli.embeddings)?,
+            force_home,
         )?,
-        Commands::Sync => run_sync(
+        Commands::Sync { force_home } => run_sync(
             cli.path.as_deref(),
             resolve_embedder(cli.path.as_deref(), cli.embeddings)?,
+            force_home,
         )?,
         Commands::Doctor { workspace, all } => run_doctor(cli.path.as_deref(), &workspace, all)?,
         Commands::Daemon { stop: true, .. } => run_daemon_stop(cli.path.as_deref())?,
         Commands::Daemon { http, .. } => {
-            documentum::cli::daemon::run_daemon(
+            ctxq::cli::daemon::run_daemon(
                 cli.path.as_deref(),
                 resolve_embedder(cli.path.as_deref(), cli.embeddings)?,
                 http,
@@ -422,10 +428,7 @@ fn main() -> anyhow::Result<()> {
                 .map(|s| s.to_string_lossy().into_owned())
                 .unwrap_or_default();
             let bytes = std::fs::read(&file)?;
-            print!(
-                "{}",
-                documentum::core::convert::to_markdown(ext, &bytes, &title)?
-            );
+            print!("{}", ctxq::core::convert::to_markdown(ext, &bytes, &title)?);
         }
         Commands::Ingest {
             intake,
@@ -454,6 +457,7 @@ fn main() -> anyhow::Result<()> {
                 run_sync(
                     cli.path.as_deref(),
                     resolve_embedder(cli.path.as_deref(), cli.embeddings)?,
+                    false,
                 )?;
             }
         }
@@ -503,9 +507,10 @@ fn main() -> anyhow::Result<()> {
             skill,
             hooks,
             in_repo,
+            force_home,
         } => {
             let embedder = if uninstall {
-                documentum::core::vector::Embedder::local()
+                ctxq::core::vector::Embedder::local()
             } else {
                 resolve_embedder(cli.path.as_deref(), cli.embeddings)?
             };
@@ -518,6 +523,7 @@ fn main() -> anyhow::Result<()> {
                 skill,
                 hooks,
                 in_repo,
+                force_home,
                 embedder,
             })?;
         }

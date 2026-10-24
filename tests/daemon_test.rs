@@ -5,7 +5,7 @@ use std::process::Command;
 use std::time::{Duration, Instant};
 
 fn bin() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_documentum"))
+    Command::new(env!("CARGO_BIN_EXE_ctxq"))
 }
 
 #[test]
@@ -19,7 +19,7 @@ fn q_autostarts_daemon_and_http_serves_peers() {
     )
     .unwrap();
     std::fs::write(
-        root.join("documentum.toml"),
+        root.join("ctxq.toml"),
         "[daemon]\nhttp = \"127.0.0.1:39517\"\n",
     )
     .unwrap();
@@ -28,9 +28,9 @@ fn q_autostarts_daemon_and_http_serves_peers() {
             .arg("--path")
             .arg(root)
             .args(args)
-            .env("DOCUMENTUM_CACHE_DIR", cache.path())
-            .env_remove("DOCUMENTUM_CONFIG")
-            .env_remove("DOCUMENTUM_EMBEDDINGS")
+            .env("CTXQ_CACHE_DIR", cache.path())
+            .env_remove("CTXQ_CONFIG")
+            .env_remove("CTXQ_EMBEDDINGS")
             .output()
             .unwrap();
         assert!(
@@ -86,7 +86,7 @@ fn q_autostarts_daemon_and_http_serves_peers() {
     )
     .unwrap();
     std::fs::write(
-        ws2.path().join("documentum.toml"),
+        ws2.path().join("ctxq.toml"),
         "[[store.federate]]\nbackend = \"peer\"\nurl = \"http://127.0.0.1:39517\"\nname = \"ws1\"\nweight = 5.0\n",
     )
     .unwrap();
@@ -95,8 +95,8 @@ fn q_autostarts_daemon_and_http_serves_peers() {
             .arg("--path")
             .arg(ws2.path())
             .args(args)
-            .env("DOCUMENTUM_CACHE_DIR", cache.path())
-            .env_remove("DOCUMENTUM_CONFIG")
+            .env("CTXQ_CACHE_DIR", cache.path())
+            .env_remove("CTXQ_CONFIG")
             .output()
             .unwrap();
         assert!(

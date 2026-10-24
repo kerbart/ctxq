@@ -1215,7 +1215,7 @@ pub fn export_map(opts: &MapOptions) -> Result<MapReport> {
     std::fs::write(opts.context.join("AGENTS.md"), agents)?;
 
     let gitignore = format!(
-        "# documentum ingest — never push potentially confidential content\n/{}/\nsources/\nassets/\n.organizer/\n",
+        "# ctxq ingest — never push potentially confidential content\n/{}/\nsources/\nassets/\n.organizer/\n",
         opts.intake
     );
     std::fs::write(opts.context.join(".gitignore"), gitignore)?;

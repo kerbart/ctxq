@@ -45,13 +45,20 @@ fn json_entry_to_toml_entry(entry: &Value) -> merge_toml::Entry {
                 .collect()
         })
         .unwrap_or_default();
-    merge_toml::Entry { command, args, env }
+    let cwd = entry.get("cwd").and_then(Value::as_str).map(str::to_string);
+    merge_toml::Entry {
+        command,
+        args,
+        env,
+        cwd,
+    }
 }
 
 /// Installs or updates `spec`'s entry (or removes it, if `uninstall`), under `base_dir`
 /// (workspace root for `Project`-scope clients, home/user config dir for `User`-scope ones).
-/// `repo_root` is the absolute path pinned into `User`-scope entries (ignored for `Project`
-/// scope). Backups go to `backup_dir` tagged with `timestamp`, only on an actual write.
+/// `repo_root` is pinned as `--path` on user clients that [`ClientSpec::pins_repo_path`],
+/// and as `cwd` on Codex project entries. Backups go to `backup_dir` tagged with
+/// `timestamp`, only on an actual write.
 #[allow(clippy::too_many_arguments)]
 pub fn apply_client(
     spec: &ClientSpec,
@@ -133,14 +140,14 @@ mod tests {
             dir.path(),
             &dir.path().join("backups"),
             "ts",
-            "documentum",
+            "ctxq",
             None,
             false,
         )
         .unwrap();
         assert!(matches!(outcome, Outcome::Installed { backup: None }));
         let text = fs::read_to_string(config_path(spec, dir.path())).unwrap();
-        assert!(text.contains("\"documentum\""));
+        assert!(text.contains("\"ctxq\""));
     }
 
     #[test]
@@ -148,9 +155,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let spec = client_by_id("cursor").unwrap();
         let backups = dir.path().join("backups");
-        apply_client(spec, dir.path(), &backups, "ts1", "documentum", None, false).unwrap();
-        let outcome =
-            apply_client(spec, dir.path(), &backups, "ts2", "documentum", None, false).unwrap();
+        apply_client(spec, dir.path(), &backups, "ts1", "ctxq", None, false).unwrap();
+        let outcome = apply_client(spec, dir.path(), &backups, "ts2", "ctxq", None, false).unwrap();
         assert_eq!(outcome, Outcome::AlreadyUpToDate);
         assert!(!backups.exists(), "no-op rerun must not write a backup");
     }
@@ -160,26 +166,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let spec = client_by_id("cursor").unwrap();
         let backups = dir.path().join("backups");
-        apply_client(
-            spec,
-            dir.path(),
-            &backups,
-            "ts1",
-            "documentum-old",
-            None,
-            false,
-        )
-        .unwrap();
-        let outcome = apply_client(
-            spec,
-            dir.path(),
-            &backups,
-            "ts2",
-            "documentum-new",
-            None,
-            false,
-        )
-        .unwrap();
+        apply_client(spec, dir.path(), &backups, "ts1", "ctxq-old", None, false).unwrap();
+        let outcome =
+            apply_client(spec, dir.path(), &backups, "ts2", "ctxq-new", None, false).unwrap();
         assert!(matches!(outcome, Outcome::Installed { backup: Some(_) }));
         assert!(backups.read_dir().unwrap().next().is_some());
     }
@@ -193,7 +182,7 @@ mod tests {
             dir.path(),
             &dir.path().join("backups"),
             "ts",
-            "documentum",
+            "ctxq",
             None,
             true,
         )
@@ -206,18 +195,17 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let spec = client_by_id("cursor").unwrap();
         let backups = dir.path().join("backups");
-        apply_client(spec, dir.path(), &backups, "ts1", "documentum", None, false).unwrap();
+        apply_client(spec, dir.path(), &backups, "ts1", "ctxq", None, false).unwrap();
         let config = config_path(spec, dir.path());
         let mut root: serde_json::Map<String, Value> =
             serde_json::from_str(&fs::read_to_string(&config).unwrap()).unwrap();
         root["mcpServers"]["other-tool"] = serde_json::json!({"command": "foo"});
         fs::write(&config, serde_json::to_string_pretty(&root).unwrap()).unwrap();
 
-        let outcome =
-            apply_client(spec, dir.path(), &backups, "ts2", "documentum", None, true).unwrap();
+        let outcome = apply_client(spec, dir.path(), &backups, "ts2", "ctxq", None, true).unwrap();
         assert!(matches!(outcome, Outcome::Uninstalled { .. }));
         let text = fs::read_to_string(&config).unwrap();
-        assert!(!text.contains("\"documentum\""));
+        assert!(!text.contains("\"ctxq\""));
         assert!(text.contains("other-tool"));
     }
 
@@ -230,7 +218,7 @@ mod tests {
             dir.path(),
             &dir.path().join("backups"),
             "ts",
-            "documentum",
+            "ctxq",
             Some("/abs/repo"),
             false,
         )
@@ -249,14 +237,38 @@ mod tests {
             dir.path(),
             &dir.path().join("backups"),
             "ts",
-            "documentum",
+            "ctxq",
             Some("/abs/repo"),
             false,
         )
         .unwrap();
         assert!(matches!(outcome, Outcome::Installed { backup: None }));
         let text = fs::read_to_string(config_path(spec, dir.path())).unwrap();
-        assert!(text.contains("[mcp_servers.documentum]"));
+        assert!(text.contains("[mcp_servers.ctxq]"));
+        assert!(text.contains("args = [\"mcp\"]"));
+        assert!(text.contains("cwd = \"/abs/repo\""));
+        assert!(!text.contains("--path"));
+    }
+
+    #[test]
+    fn codex_user_toml_does_not_pin_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let spec = client_by_id("codex-user").unwrap();
+        apply_client(
+            spec,
+            dir.path(),
+            &dir.path().join("backups"),
+            "ts",
+            "ctxq",
+            Some("/abs/repo"),
+            false,
+        )
+        .unwrap();
+        let text = fs::read_to_string(config_path(spec, dir.path())).unwrap();
+        assert!(text.contains("[mcp_servers.ctxq]"));
+        assert!(text.contains("args = [\"mcp\"]"));
+        assert!(!text.contains("--path"));
+        assert!(!text.contains("cwd"));
     }
 
     #[test]
@@ -271,7 +283,7 @@ mod tests {
             dir.path(),
             &dir.path().join("backups"),
             "ts",
-            "documentum",
+            "ctxq",
             None,
             false,
         )

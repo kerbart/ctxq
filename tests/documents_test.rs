@@ -3,8 +3,8 @@
 
 use std::io::Write;
 
-use documentum::core::docmeta::SearchFilters;
-use documentum::core::hybrid::DocEngine;
+use ctxq::core::docmeta::SearchFilters;
+use ctxq::core::hybrid::DocEngine;
 
 fn ooxml(parts: &[(&str, &str)]) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
@@ -21,14 +21,7 @@ fn ooxml(parts: &[(&str, &str)]) -> Vec<u8> {
 }
 
 fn sync(engine: &mut DocEngine, root: &std::path::Path) {
-    engine
-        .sync_directory_incremental(
-            root,
-            None::<fn(usize, bool)>,
-            None::<fn(usize, usize)>,
-            None::<fn(usize, usize)>,
-        )
-        .unwrap();
+    engine.sync_directory_incremental(root, None).unwrap();
 }
 
 #[test]

@@ -45,7 +45,7 @@ pub struct HitPayload {
 }
 
 pub trait VectorStore: Send + Sync {
-    /// Human label (`qdrant:http://…/documentum`).
+    /// Human label (`qdrant:http://…/ctxq`).
     fn label(&self) -> String;
 
     /// Creates the collection if needed (owned stores).

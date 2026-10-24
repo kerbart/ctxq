@@ -25,7 +25,7 @@ docs.db
 *.npy
 
 # Config & secrets
-documentum.toml
+ctxq.toml
 .env
 .env.local
 *.pem
@@ -35,6 +35,7 @@ config.yml
 # Cache
 .cache/
 *.cache
+.ctxq/
 
 # OS
 .DS_Store
@@ -57,3 +58,9 @@ env/
 eval/golden.jsonl
 bench/*_rows.json
 site/hero.jpg
+
+# Packaged binaries served at https://ctxq.dev/releases/
+/dist/
+
+# Internal notes — do not publish
+docs/LAUNCH-REVIEW.md

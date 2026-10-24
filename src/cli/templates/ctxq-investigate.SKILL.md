@@ -1,6 +1,6 @@
 ---
-name: documentum-investigate
-description: Co-retrieve documentation and the code graph with documentum before editing.
+name: ctxq-investigate
+description: Co-retrieve documentation and the code graph with ctxq before editing.
 ---
 
 # Investigation
@@ -12,4 +12,5 @@ description: Co-retrieve documentation and the code graph with documentum before
 5. After a diff, call `code_impact` (or the `changes` command) to list callers and the documents that mention the touched symbols.
 6. Call `code_sync` after editing source files so the graph matches the tree.
 
-Prefer these tools before a blind repository walk.
+Prefer these tools before a blind repository walk. Do not shell `ctxq`
+(Codex sandbox cannot launch it); the MCP server is the path that works.

@@ -4,9 +4,8 @@ use std::io::Write;
 use std::process::{Command, Stdio};
 
 fn bin() -> Command {
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_documentum"));
-    cmd.env_remove("DOCUMENTUM_CONFIG")
-        .env_remove("DOCUMENTUM_EMBEDDINGS");
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_ctxq"));
+    cmd.env_remove("CTXQ_CONFIG").env_remove("CTXQ_EMBEDDINGS");
     cmd
 }
 
@@ -17,7 +16,7 @@ fn run(root: &std::path::Path, cache: &std::path::Path, args: &[&str]) -> String
         .arg("--embeddings")
         .arg("local")
         .args(args)
-        .env("DOCUMENTUM_CACHE_DIR", cache)
+        .env("CTXQ_CACHE_DIR", cache)
         .output()
         .unwrap();
     assert!(
@@ -114,7 +113,7 @@ diff --git a/src/order.rs b/src/order.rs
         .arg("--embeddings")
         .arg("local")
         .args(["changes", "--json"])
-        .env("DOCUMENTUM_CACHE_DIR", cache.path())
+        .env("CTXQ_CACHE_DIR", cache.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -155,7 +154,7 @@ diff --git a/src/order.rs b/src/order.rs
         .arg("--embeddings")
         .arg("local")
         .arg("mcp")
-        .env("DOCUMENTUM_CACHE_DIR", cache.path())
+        .env("CTXQ_CACHE_DIR", cache.path())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -189,7 +188,7 @@ diff --git a/src/order.rs b/src/order.rs
         responses.iter().all(|r| r.get("error").is_none()),
         "{stdout}"
     );
-    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "documentum");
+    assert_eq!(responses[0]["result"]["serverInfo"]["name"], "ctxq");
     assert_eq!(responses[0]["result"]["protocolVersion"], "2024-11-05");
     let tools = responses[1]["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
@@ -210,5 +209,5 @@ diff --git a/src/order.rs b/src/order.rs
         "mcp search: {search_text}"
     );
     // Protocol bytes stay on stdout; the banner is stderr-only.
-    assert!(!stdout.contains("documentum serve"));
+    assert!(!stdout.contains("ctxq serve"));
 }

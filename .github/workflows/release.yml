@@ -1,8 +1,9 @@
 # Release: on a `v*` tag, build the single binary for every platform, publish
-# the archives + SHA256SUMS as a GitHub release. `install.sh`
-# download from `releases/latest/download/<asset>` and verify the checksum.
+# the archives + SHA256SUMS as a GitHub release. `install.sh` downloads from
+# https://ctxq.dev/releases/ (current build) and, when CTXQ_VERSION is a tag,
+# from GitHub as fallback. Both sources are SHA-256 verified.
 #
-# Cut a release with:  scripts/release.sh v2.0.1   (tags, pushes, CI does the rest)
+# Cut a release with:  scripts/release.sh v3.0.1   (tags, pushes, CI does the rest)
 name: release
 
 on:
@@ -19,7 +20,7 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
-  BIN: documentum
+  BIN: ctxq
 
 jobs:
   build:
@@ -32,19 +33,19 @@ jobs:
           # Linux: static musl builds (no glibc requirement), cross-compiled with zig.
           - os: ubuntu-24.04
             target: x86_64-unknown-linux-musl
-            asset: documentum-linux-x86_64.tar.gz
+            asset: ctxq-linux-x86_64.tar.gz
             zig: true
           - os: ubuntu-24.04
             target: aarch64-unknown-linux-musl
-            asset: documentum-linux-aarch64.tar.gz
+            asset: ctxq-linux-aarch64.tar.gz
             zig: true
           # macOS: both architectures from the Apple-silicon runner (universal SDK).
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset: documentum-macos-aarch64.tar.gz
+            asset: ctxq-macos-aarch64.tar.gz
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset: documentum-macos-x86_64.tar.gz
+            asset: ctxq-macos-x86_64.tar.gz
     steps:
       - uses: actions/checkout@v4
         with:
@@ -70,7 +71,7 @@ jobs:
       - name: Build
         shell: bash
         env:
-          DOCUMENTUM_VERSION: ${{ inputs.tag || github.ref_name }}
+          CTXQ_VERSION: ${{ inputs.tag || github.ref_name }}
         run: |
           if [ "${{ matrix.zig }}" = "true" ]; then
             cargo zigbuild --release --locked --target "${{ matrix.target }}"
@@ -110,7 +111,7 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          sha256sum documentum-* > SHA256SUMS
+          sha256sum ctxq-* > SHA256SUMS
           cat SHA256SUMS
 
       - name: Publish
@@ -122,5 +123,5 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" dist/* --clobber
           else
-            gh release create "$TAG" dist/* --title "documentum $TAG" --generate-notes --latest
+            gh release create "$TAG" dist/* --title "ctxq $TAG" --generate-notes --latest
           fi

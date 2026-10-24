@@ -1,10 +1,12 @@
-# documentum.toml — every key with its default. Copy to the workspace root as
-# `documentum.toml` (or `.documentum.toml`, or point $DOCUMENTUM_CONFIG at it).
-# An absent file gives exactly these defaults. DOCUMENTUM_* environment
+# ctxq.toml — every key with its default. Copy to the workspace root as
+# `ctxq.toml` (or `.ctxq.toml`, or point $CTXQ_CONFIG at it).
+# An absent file gives exactly these defaults. CTXQ_* environment
 # variables override the file; command-line flags override both.
 
 [embed]
-# local  : hashed n-gram vectors, offline, no download (default)
+# local  : hashed n-grams, offline, no download (default). Not a neural model:
+#          BM25 leads, the hash is a weak rerank. For real semantic search pick
+#          ollama or openai below.
 # onnx   : embedded bge-small (build with --features onnx-embeddings)
 # ollama : POST /api/embed      openai : POST /v1/embeddings (LM Studio, vLLM, TEI, OpenAI…)
 backend = "local"
@@ -45,7 +47,7 @@ respect_gitignore = true
 exclude_dirs = []              # names skipped at any depth (exact)
 exclude_dir_names = ["_archive", "archive", "archives", "backup", "backups"]   # case-insensitive
 exclude_top = []               # top-level directories of the root not walked
-exclude_globs_file = ".documentumignore"
+exclude_globs_file = ".ctxqignore"
 exclude_globs = []
 own_remotes = []               # nested git repos whose remote matches none = third-party clones, skipped
 table_row_dirs = []            # tables there are also indexed row by row (+ scan.output_dir)
@@ -106,12 +108,12 @@ lang = "en"                    # language of generated prose: en | fr
 backend = "local"              # "local" (SQLite, exact) or "qdrant"
 mode = "owned"                 # "owned" (sync writes) or "attached" (read-only)
 url = ""
-collection = ""                # default "documentum"
+collection = ""                # default "ctxq"
 # api_key_env = "QDRANT_API_KEY"
 exact = false                  # brute force instead of the ANN index
 timeout_secs = 30
 
-# Read-only bases queried with every search (qdrant or peer documentum daemon).
+# Read-only bases queried with every search (qdrant or peer ctxq daemon).
 # [[store.federate]]
 # backend = "peer"
 # url = "http://other-host:7700"
@@ -120,8 +122,8 @@ timeout_secs = 30
 # api_key_env = "TEAM_DOCS_TOKEN"
 
 [daemon]
-# socket = "/run/user/1000/documentum.sock"   # default: daemon.sock in the cache dir
+# socket = "/run/user/1000/ctxq.sock"   # default: daemon.sock in the cache dir
 # http = "127.0.0.1:7700"                     # HTTP API (search/status/inventory/map/annotate)
-# http_token_env = "DOCUMENTUM_HTTP_TOKEN"
-sync_interval_secs = 0         # periodic incremental sync (0 = never)
-scan_interval_secs = 0         # periodic scan of the sources, then sync
+# http_token_env = "CTXQ_HTTP_TOKEN"
+sync_interval_secs = 60        # incremental re-sync while the daemon is up (0 = never)
+scan_interval_secs = 300       # re-run inventory sources, then sync (0 = never)

@@ -6,7 +6,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use documentum::core::ingest::{export_map, ingest, IngestOptions, MapOptions};
+use ctxq::core::ingest::{export_map, ingest, IngestOptions, MapOptions};
 
 fn ooxml(parts: &[(&str, &str)]) -> Vec<u8> {
     let mut buf = std::io::Cursor::new(Vec::new());
@@ -259,5 +259,5 @@ fn ingest_then_export_map_end_to_end() {
         agents.contains("profile **`shaping`** · 6 document(s)"),
         "{agents}"
     );
-    assert_eq!(std::fs::read_to_string(context.join(".gitignore")).unwrap(), "# documentum ingest — never push potentially confidential content\n/_intake/\nsources/\nassets/\n.organizer/\n");
+    assert_eq!(std::fs::read_to_string(context.join(".gitignore")).unwrap(), "# ctxq ingest — never push potentially confidential content\n/_intake/\nsources/\nassets/\n.organizer/\n");
 }

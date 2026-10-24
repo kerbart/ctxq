@@ -1,4 +1,4 @@
-//! # documentum
+//! # ctxq
 //!
 //! Indexing and retrieval for agents, in one binary:
 //! - [`core`]: documents (markdown, office, PDF, inventories) with hybrid search
@@ -14,19 +14,22 @@ pub mod core;
 pub mod mcp;
 pub mod setup;
 
+/// Binary, crate and MCP server name — one identifier everywhere.
+pub const NAME: &str = "ctxq";
+
 /// Release tag injected by CI, else the crate version.
-pub const VERSION: &str = match option_env!("DOCUMENTUM_VERSION") {
+pub const VERSION: &str = match option_env!("CTXQ_VERSION") {
     Some(v) => v,
     None => env!("CARGO_PKG_VERSION"),
 };
 
 /// Target triple injected by CI.
-pub const TARGET: &str = match option_env!("DOCUMENTUM_TARGET") {
+pub const TARGET: &str = match option_env!("CTXQ_TARGET") {
     Some(t) => t,
     None => "unknown-target",
 };
 
-/// `documentum --version` long form.
+/// `ctxq --version` long form.
 pub fn long_version() -> &'static str {
     static LONG: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
         format!(

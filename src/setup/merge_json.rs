@@ -1,5 +1,5 @@
 //! Idempotent JSON config merge (§3.1): navigate/create the `root_key_path` table, upsert or
-//! remove the `"documentum"` entry, never touch anything else in the file.
+//! remove the `"ctxq"` entry, never touch anything else in the file.
 
 use serde_json::{Map, Value};
 
@@ -32,7 +32,7 @@ fn value_kind(v: &Value) -> &'static str {
 }
 
 /// Walks `root_key_path` from `root`, creating empty objects for missing intermediate keys,
-/// then inserts `entry` under the final `"documentum"` key. Fails without modifying `root` if
+/// then inserts `entry` under the final `"ctxq"` key. Fails without modifying `root` if
 /// any existing intermediate key is present but isn't itself an object.
 pub fn merge_entry(
     root: &mut Map<String, Value>,
@@ -53,11 +53,11 @@ pub fn merge_entry(
             .or_insert_with(|| Value::Object(Map::new()));
         current = slot.as_object_mut().expect("validated above");
     }
-    current.insert("documentum".to_string(), entry);
+    current.insert("ctxq".to_string(), entry);
     Ok(())
 }
 
-/// Removes the `"documentum"` entry at `root_key_path`, if present. Returns whether anything
+/// Removes the `"ctxq"` entry at `root_key_path`, if present. Returns whether anything
 /// was actually removed (a pure no-op must not trigger a backup/write upstream).
 pub fn remove_entry(root: &mut Map<String, Value>, root_key_path: &[&str]) -> bool {
     let mut current: &mut Map<String, Value> = root;
@@ -67,7 +67,7 @@ pub fn remove_entry(root: &mut Map<String, Value>, root_key_path: &[&str]) -> bo
             _ => return false,
         }
     }
-    current.remove("documentum").is_some()
+    current.remove("ctxq").is_some()
 }
 
 /// Applies the full merge/removal to `original_text` (`None` meaning the file doesn't exist
@@ -104,8 +104,8 @@ mod tests {
     #[test]
     fn creates_missing_intermediate_keys() {
         let mut root = Map::new();
-        merge_entry(&mut root, &["mcpServers"], json!({"command": "documentum"})).unwrap();
-        assert_eq!(root["mcpServers"]["documentum"]["command"], "documentum");
+        merge_entry(&mut root, &["mcpServers"], json!({"command": "ctxq"})).unwrap();
+        assert_eq!(root["mcpServers"]["ctxq"]["command"], "ctxq");
     }
 
     #[test]
@@ -114,10 +114,10 @@ mod tests {
             r#"{"mcpServers": {"other-tool": {"command": "foo"}}, "unrelatedTopLevel": 42}"#,
         )
         .unwrap();
-        merge_entry(&mut root, &["mcpServers"], json!({"command": "documentum"})).unwrap();
+        merge_entry(&mut root, &["mcpServers"], json!({"command": "ctxq"})).unwrap();
         assert_eq!(root["mcpServers"]["other-tool"]["command"], "foo");
         assert_eq!(root["unrelatedTopLevel"], 42);
-        assert_eq!(root["mcpServers"]["documentum"]["command"], "documentum");
+        assert_eq!(root["mcpServers"]["ctxq"]["command"], "ctxq");
     }
 
     #[test]
@@ -139,13 +139,9 @@ mod tests {
     #[test]
     fn remove_entry_deletes_only_our_key() {
         let mut root: Map<String, Value> =
-            serde_json::from_str(r#"{"mcpServers": {"documentum": {}, "other-tool": {}}}"#)
-                .unwrap();
+            serde_json::from_str(r#"{"mcpServers": {"ctxq": {}, "other-tool": {}}}"#).unwrap();
         assert!(remove_entry(&mut root, &["mcpServers"]));
-        assert!(!root["mcpServers"]
-            .as_object()
-            .unwrap()
-            .contains_key("documentum"));
+        assert!(!root["mcpServers"].as_object().unwrap().contains_key("ctxq"));
         assert!(root["mcpServers"]
             .as_object()
             .unwrap()
@@ -154,20 +150,16 @@ mod tests {
 
     #[test]
     fn apply_on_absent_file_creates_fresh_object() {
-        let (changed, text) = apply(
-            None,
-            &["mcpServers"],
-            Some(json!({"command": "documentum"})),
-        )
-        .unwrap();
+        let (changed, text) =
+            apply(None, &["mcpServers"], Some(json!({"command": "ctxq"}))).unwrap();
         assert!(changed);
-        assert!(text.contains("\"documentum\""));
+        assert!(text.contains("\"ctxq\""));
         assert!(text.ends_with('\n'));
     }
 
     #[test]
     fn apply_is_idempotent_rerunning_with_the_same_entry_reports_no_change() {
-        let entry = json!({"command": "documentum", "args": ["mcp"]});
+        let entry = json!({"command": "ctxq", "args": ["mcp"]});
         let (_, first) = apply(None, &["mcpServers"], Some(entry.clone())).unwrap();
         let (changed, second) = apply(Some(&first), &["mcpServers"], Some(entry)).unwrap();
         assert!(!changed);

@@ -47,7 +47,11 @@ pub fn tool_specs() -> Vec<ToolSpec> {
     vec![
         ToolSpec {
             name: "search",
-            description: "Hybrid search (BM25 + vector) over the documentation/spec index.",
+            description: "Ranked documentation passages with source path and line range. \
+                Start here for a question. Filters: tags, source_types, since, path_prefixes. \
+                If the payload has `upgrade`, tell the user — the corpus is large and still \
+                on the hash embedder; they should plug Ollama (or an OpenAI-compatible server) \
+                in ctxq.toml and run `ctxq sync`.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -65,9 +69,8 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "context",
-            description: "Budgeted, paginated co-retrieval entry point: fetches ranked doc \
-                entries for `query` within a token budget (§4.3, ≈4 chars/token), exposing a \
-                ledger to fetch what didn't fit on subsequent pages.",
+            description: "Docs and code together, paged inside a token budget. Use when search \
+                is not enough and you need both sides. `page` continues where the last call stopped.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -82,8 +85,8 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "inventory",
-            description: "Structured rows of an inventory source (no vector search), or the \
-                list of known inventories when `kind` is omitted.",
+            description: "Exact inventory rows — which port, container, domain, unit. No vector \
+                search. Omit `kind` to list known inventories.",
             input_schema: json!({
                 "type": "object",
                 "properties": {
@@ -112,7 +115,9 @@ pub fn tool_specs() -> Vec<ToolSpec> {
         },
         ToolSpec {
             name: "status",
-            description: "Freshness, store, sources and coverage snapshot of the workspace.",
+            description: "Freshness, store, sources and coverage snapshot of the workspace. \
+                If `upgrade` is set, show it to the user: how to switch from local-hash to \
+                Ollama/OpenAI embeddings, and optionally Qdrant.",
             input_schema: json!({
                 "type": "object",
                 "properties": { "workspace": {"type": "string"} },

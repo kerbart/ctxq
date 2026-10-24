@@ -89,7 +89,7 @@ impl QdrantStore {
     fn owned(&self) -> Result<()> {
         if self.mode == StoreMode::Attached {
             bail!(
-                "{} is attached (read-only): documentum never writes to it",
+                "{} is attached (read-only): ctxq never writes to it",
                 self.label()
             );
         }

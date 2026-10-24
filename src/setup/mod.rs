@@ -1,4 +1,4 @@
-//! MCP client-config `setup` (§3.1): idempotent registration of the `documentum` MCP server
+//! MCP client-config `setup` (§3.1): idempotent registration of the `ctxq` MCP server
 //! into each supported client's config file (JSON or, for Codex, TOML), with a backup before
 //! any content-changing write, plus a marker-delimited `AGENTS.md`/pointer-files block.
 //!
@@ -17,5 +17,6 @@ pub mod rules;
 
 pub use apply::{apply_client, Outcome};
 pub use clients::{
-    client_by_id, detect_project_clients, ClientSpec, ConfigFormat, EntryShape, Scope, CLIENTS,
+    client_by_id, detect_project_clients, detect_setup_clients, ClientSpec, ConfigFormat,
+    EntryShape, Scope, CLIENTS,
 };

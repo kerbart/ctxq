@@ -145,7 +145,7 @@ impl HttpEmbedder {
     /// Builds the embedder, without any network call.
     pub fn new(settings: HttpSettings) -> Result<Self> {
         if settings.urls.is_empty() {
-            bail!("no embedding instance configured (DOCUMENTUM_EMBED_URLS)");
+            bail!("no embedding instance configured (CTXQ_EMBED_URLS)");
         }
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(settings.connect_timeout_secs))

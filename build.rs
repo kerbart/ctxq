@@ -1,7 +1,7 @@
-// Exposes the target triple to `documentum --version`; CI injects DOCUMENTUM_VERSION itself.
+// Exposes the target triple to `ctxq --version`; CI injects CTXQ_VERSION itself.
 fn main() {
-    println!("cargo:rerun-if-env-changed=DOCUMENTUM_VERSION");
+    println!("cargo:rerun-if-env-changed=CTXQ_VERSION");
     if let Ok(target) = std::env::var("TARGET") {
-        println!("cargo:rustc-env=DOCUMENTUM_TARGET={target}");
+        println!("cargo:rustc-env=CTXQ_TARGET={target}");
     }
 }

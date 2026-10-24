@@ -512,7 +512,7 @@ pub fn projects(src: &SourceSettings, root: &Path, lang: Lang) -> Result<Section
         intro: Some(
             lang.t(
                 "Every project directory and its entry document. Their markdown content is indexed: search rather than grep.",
-                "Tous les répertoires-projets et leur doc d'entrée. Le **contenu** de ces markdown est indexé : interroge `documentum` plutôt que de grep.",
+                "Tous les répertoires-projets et leur doc d'entrée. Le **contenu** de ces markdown est indexé : interroge `ctxq` plutôt que de grep.",
             )
             .into(),
         ),

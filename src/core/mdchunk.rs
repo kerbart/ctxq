@@ -1,4 +1,4 @@
-//! Markdown chunking for documentum.
+//! Markdown chunking for ctxq.
 //!
 //! One chunk = one section (level 2 or 3 heading), prefixed with its
 //! breadcrumb; the text stays raw markdown. Large tables in the generated
@@ -171,7 +171,7 @@ fn table_row_chunks(sec: &Section) -> Vec<Section> {
     out
 }
 
-/// Splits a markdown file into documentum chunks.
+/// Splits a markdown file into ctxq chunks.
 pub fn chunk_markdown(rel_path: &str, content: &str, per_row: bool) -> Vec<DocChunk> {
     let lines: Vec<&str> = split_lines(content);
     let title = doc_title_for(rel_path, &lines);

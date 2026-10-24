@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   pull_request:
 
 env:
@@ -17,3 +17,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       # Release profile: what the box and the docs run (`cargo test --release`).
       - run: cargo test --release --locked
+      - name: Public relevance gate
+        env:
+          CTXQ_CACHE_DIR: ${{ runner.temp }}/ctxq-eval
+          CTXQ_GOLDEN: eval/public/golden.jsonl
+          DN_CACHE: ${{ runner.temp }}/ctxq-eval
+        run: |
+          cargo build --release --locked
+          ./target/release/ctxq --path eval/public/corpus index
+          python3 bench/eval_docs.py --corpus eval/public/corpus --min-mrr 0.80

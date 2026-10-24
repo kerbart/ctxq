@@ -40,7 +40,7 @@ pub struct ClientSpec {
     /// Antigravity entries share the `--agent antigravity` name in the CLI; which one(s) a
     /// given invocation targets is a `setup` command wiring decision, not this module's).
     pub id: &'static str,
-    /// Value written into the `DOCUMENTUM_CLIENT` env var of the entry (spec §3.1).
+    /// Value written into the `CTXQ_CLIENT` env var of the entry (spec §3.1).
     pub env_client_id: &'static str,
     pub scope: Scope,
     pub format: ConfigFormat,
@@ -50,14 +50,32 @@ pub struct ClientSpec {
     pub relative_config_path: &'static str,
     /// Dotted path to the table holding per-server entries, e.g. `&["mcpServers"]`,
     /// `&["servers"]`, `&["context_servers"]`, `&["mcp_servers"]` (TOML). The final
-    /// `"documentum"` key is appended by the merge logic, not included here.
+    /// `"ctxq"` key is appended by the merge logic, not included here.
     pub root_key_path: &'static [&'static str],
     pub entry_shape: EntryShape,
     /// Directory (relative to the workspace root) whose presence marks this *project* client
     /// as installed, for `--agent all` auto-detection. `None` for clients detected only by
     /// their own config file already existing, and for every `User`-scope client (never
-    /// auto-detected, per spec).
+    /// auto-detected via a project marker). Codex is the exception: see
+    /// [`detect_setup_clients`].
     pub detect_marker: Option<&'static str>,
+}
+
+impl ClientSpec {
+    /// User-scope clients pin `["mcp", "--path", repo]` so a global config still
+    /// indexes the repo that ran `setup`. Codex does not: a pinned path would
+    /// steal every other project the next time `setup` runs, and Codex already
+    /// launches MCP from the session cwd (plus a project `.codex/config.toml`).
+    pub fn pins_repo_path(&self) -> bool {
+        self.scope == Scope::User && self.id != "codex-user"
+    }
+
+    /// Codex project entries set `cwd` so the stdio server starts in the repo
+    /// even if the client process cwd is elsewhere. User-scope Codex must not:
+    /// that would reintroduce last-project-wins.
+    pub fn includes_cwd(&self) -> bool {
+        self.id == "codex" && self.scope == Scope::Project
+    }
 }
 
 /// Every client from the §3.1 table. `"generic"` is deliberately excluded from
@@ -148,6 +166,16 @@ pub const CLIENTS: &[ClientSpec] = &[
     ClientSpec {
         id: "codex",
         env_client_id: "codex",
+        scope: Scope::Project,
+        format: ConfigFormat::Toml,
+        relative_config_path: ".codex/config.toml",
+        root_key_path: &["mcp_servers"],
+        entry_shape: EntryShape::Standard,
+        detect_marker: Some(".codex"),
+    },
+    ClientSpec {
+        id: "codex-user",
+        env_client_id: "codex",
         scope: Scope::User,
         format: ConfigFormat::Toml,
         relative_config_path: ".codex/config.toml",
@@ -203,18 +231,18 @@ pub fn config_path(spec: &ClientSpec, base: &Path) -> PathBuf {
 }
 
 /// Builds the JSON entry for `spec`: `["mcp"]` for a project client, `["mcp", "--path",
-/// repo_root]` for a user client (when `repo_root` is given — always expected for `User`
-/// scope, per §3.1).
+/// repo_root]` for a user client that [`ClientSpec::pins_repo_path`] (when `repo_root`
+/// is given). Codex project entries also set `cwd`.
 pub fn build_entry(spec: &ClientSpec, command: &str, repo_root: Option<&str>) -> Value {
     let mut args = vec![Value::String("mcp".to_string())];
-    if spec.scope == Scope::User {
+    if spec.pins_repo_path() {
         if let Some(root) = repo_root {
             args.push(Value::String("--path".to_string()));
             args.push(Value::String(root.to_string()));
         }
     }
-    let env = json!({ "DOCUMENTUM_CLIENT": spec.env_client_id });
-    match spec.entry_shape {
+    let env = json!({ "CTXQ_CLIENT": spec.env_client_id });
+    let mut entry = match spec.entry_shape {
         EntryShape::Standard => json!({ "command": command, "args": args, "env": env }),
         EntryShape::VsCodeStdio => json!({
             "type": "stdio", "command": command, "args": args, "env": env
@@ -222,12 +250,19 @@ pub fn build_entry(spec: &ClientSpec, command: &str, repo_root: Option<&str>) ->
         EntryShape::ZedCustom => json!({
             "source": "custom", "command": command, "args": args, "env": env
         }),
+    };
+    if spec.includes_cwd() {
+        if let Some(root) = repo_root {
+            entry["cwd"] = json!(root);
+        }
     }
+    entry
 }
 
 /// Project-scope clients whose dedicated marker directory (or, lacking one, own config file)
-/// is present under `workspace_root` — what `--agent all` installs into. User-scope clients
-/// and `"generic"` (a pure alias of `"claude"`, see [`CLIENTS`]) are never returned.
+/// is present under `workspace_root`. User-scope clients and `"generic"` (a pure alias of
+/// `"claude"`, see [`CLIENTS`]) are never returned. Prefer [`detect_setup_clients`] for
+/// `--client all`: that also picks up Codex when it is installed in `$HOME`.
 pub fn detect_project_clients(workspace_root: &Path) -> Vec<&'static ClientSpec> {
     CLIENTS
         .iter()
@@ -240,6 +275,31 @@ pub fn detect_project_clients(workspace_root: &Path) -> Vec<&'static ClientSpec>
             marker_present || config_path(c, workspace_root).is_file()
         })
         .collect()
+}
+
+/// Clients `setup --client all` should register: project clients present in the
+/// workspace, plus Codex (project `.codex/config.toml` *and* user
+/// `~/.codex/config.toml`) when `$HOME/.codex` exists.
+///
+/// Codex cannot run `ctxq` in its shell sandbox (`bwrap: loopback: Failed
+/// RTM_NEWADDR`). MCP registration is the only path that works out of the box,
+/// so we write it without waiting for `--client codex`.
+pub fn detect_setup_clients(
+    workspace_root: &Path,
+    home: Option<&Path>,
+) -> Vec<&'static ClientSpec> {
+    let mut out = detect_project_clients(workspace_root);
+    let codex_installed = home.map(|h| h.join(".codex").is_dir()).unwrap_or(false);
+    if codex_installed {
+        for id in ["codex", "codex-user"] {
+            if let Some(spec) = client_by_id(id) {
+                if !out.iter().any(|s| s.id == spec.id) {
+                    out.push(spec);
+                }
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -275,29 +335,29 @@ mod tests {
     #[test]
     fn project_entry_has_no_path_argument() {
         let spec = client_by_id("cursor").unwrap();
-        let entry = build_entry(spec, "documentum", Some("/repo"));
+        let entry = build_entry(spec, "ctxq", Some("/repo"));
         assert_eq!(entry["args"], json!(["mcp"]));
-        assert_eq!(entry["env"]["DOCUMENTUM_CLIENT"], "cursor");
+        assert_eq!(entry["env"]["CTXQ_CLIENT"], "cursor");
     }
 
     #[test]
     fn user_entry_pins_the_repo_path() {
         let spec = client_by_id("windsurf").unwrap();
-        let entry = build_entry(spec, "documentum", Some("/abs/repo"));
+        let entry = build_entry(spec, "ctxq", Some("/abs/repo"));
         assert_eq!(entry["args"], json!(["mcp", "--path", "/abs/repo"]));
     }
 
     #[test]
     fn vscode_entry_has_the_stdio_type_field() {
         let spec = client_by_id("vscode").unwrap();
-        let entry = build_entry(spec, "documentum", None);
+        let entry = build_entry(spec, "ctxq", None);
         assert_eq!(entry["type"], "stdio");
     }
 
     #[test]
     fn zed_entry_has_the_custom_source_field() {
         let spec = client_by_id("zed").unwrap();
-        let entry = build_entry(spec, "documentum", None);
+        let entry = build_entry(spec, "ctxq", None);
         assert_eq!(entry["source"], "custom");
     }
 
@@ -321,5 +381,61 @@ mod tests {
             .map(|c| c.id)
             .collect();
         assert!(ids.contains(&"claude"));
+    }
+
+    #[test]
+    fn detect_project_clients_finds_codex_by_its_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir(dir.path().join(".codex")).unwrap();
+        let ids: Vec<&str> = detect_project_clients(dir.path())
+            .iter()
+            .map(|c| c.id)
+            .collect();
+        assert!(ids.contains(&"codex"));
+        assert!(!ids.contains(&"codex-user"));
+    }
+
+    #[test]
+    fn codex_project_entry_sets_cwd_and_does_not_pin_path() {
+        let spec = client_by_id("codex").unwrap();
+        assert_eq!(spec.scope, Scope::Project);
+        let entry = build_entry(spec, "ctxq", Some("/abs/repo"));
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert_eq!(entry["cwd"], "/abs/repo");
+        assert_eq!(entry["env"]["CTXQ_CLIENT"], "codex");
+    }
+
+    #[test]
+    fn codex_user_entry_does_not_pin_the_repo_path() {
+        let spec = client_by_id("codex-user").unwrap();
+        assert_eq!(spec.scope, Scope::User);
+        let entry = build_entry(spec, "ctxq", Some("/abs/repo"));
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert!(entry.get("cwd").is_none());
+    }
+
+    #[test]
+    fn detect_setup_clients_includes_codex_when_home_has_dot_codex() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join(".codex")).unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let ids: Vec<&str> = detect_setup_clients(workspace.path(), Some(home.path()))
+            .iter()
+            .map(|c| c.id)
+            .collect();
+        assert!(ids.contains(&"codex"));
+        assert!(ids.contains(&"codex-user"));
+    }
+
+    #[test]
+    fn detect_setup_clients_skips_codex_when_not_installed() {
+        let home = tempfile::tempdir().unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let ids: Vec<&str> = detect_setup_clients(workspace.path(), Some(home.path()))
+            .iter()
+            .map(|c| c.id)
+            .collect();
+        assert!(!ids.contains(&"codex"));
+        assert!(!ids.contains(&"codex-user"));
     }
 }

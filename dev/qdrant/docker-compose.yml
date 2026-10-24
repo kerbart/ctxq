@@ -2,7 +2,7 @@
 services:
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: documentum-qdrant-dev
+    container_name: ctxq-qdrant-dev
     restart: unless-stopped
     ports:
       - "127.0.0.1:3051:6333"

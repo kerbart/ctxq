@@ -400,13 +400,13 @@ fn pdf(bytes: &[u8]) -> Result<String> {
     // therefore runs in a child process of this very binary, with a timeout.
     // Unit tests (where the current executable is the test harness) and
     // embedders of the library can opt into in-process extraction.
-    if cfg!(test) || std::env::var_os("DOCUMENTUM_PDF_INPROCESS").is_some() {
+    if cfg!(test) || std::env::var_os("CTXQ_PDF_INPROCESS").is_some() {
         return pdf_in_process(bytes);
     }
     let dir = tempfile_dir()?;
     let (input, output) = (dir.join("in.pdf"), dir.join("out.md"));
     std::fs::write(&input, bytes)?;
-    let exe = std::env::current_exe().context("locating the documentum binary")?;
+    let exe = std::env::current_exe().context("locating the ctxq binary")?;
     let argv = vec![
         exe.to_string_lossy().into_owned(),
         PDF_CHILD_ARG.to_string(),
@@ -424,7 +424,7 @@ fn tempfile_dir() -> Result<std::path::PathBuf> {
     use std::sync::atomic::{AtomicU64, Ordering};
     static N: AtomicU64 = AtomicU64::new(0);
     let dir = std::env::temp_dir().join(format!(
-        "documentum-pdf-{}-{}",
+        "ctxq-pdf-{}-{}",
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
     ));

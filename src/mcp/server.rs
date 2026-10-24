@@ -171,7 +171,7 @@ impl McpServer {
         };
         json!({
             "protocolVersion": protocol_version,
-            "serverInfo": { "name": "documentum", "version": crate::VERSION },
+            "serverInfo": { "name": "ctxq", "version": crate::VERSION },
             "capabilities": { "tools": { "listChanged": false } },
             "instructions": tools::instructions(),
         })
@@ -233,7 +233,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(resp["result"]["protocolVersion"], "2024-11-05");
-        assert_eq!(resp["result"]["serverInfo"]["name"], "documentum");
+        assert_eq!(resp["result"]["serverInfo"]["name"], "ctxq");
+        let instr = resp["result"]["instructions"].as_str().unwrap_or("");
+        assert!(instr.contains("inventory"), "{instr}");
+        assert!(instr.contains("search"), "{instr}");
         assert_eq!(
             resp["result"]["capabilities"]["tools"]["listChanged"],
             false

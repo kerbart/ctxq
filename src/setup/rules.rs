@@ -2,17 +2,18 @@
 //! single block in place, byte-for-byte stable across reruns, leaving every other line in the
 //! file untouched.
 
-pub const BEGIN_MARKER: &str = "<!-- documentum:begin -->";
-pub const END_MARKER: &str = "<!-- documentum:end -->";
+pub const BEGIN_MARKER: &str = "<!-- ctxq:begin -->";
+pub const END_MARKER: &str = "<!-- ctxq:end -->";
 
 /// The generated `AGENTS.md` block content: a short pointer telling an agent to prefer the
-/// `documentum` MCP tools over blind grepping.
+/// `ctxq` MCP tools over blind grepping.
 pub fn agents_md_body() -> String {
-    "## documentum\n\n\
-     This project is indexed by `documentum` (MCP server `documentum`). Before walking the \
-     code or the documentation by hand, prefer its tools: `search` / `context` for specs \
-     and documentation, `code_symbol` / `code_callers` / `code_callees` / `code_path` \
-     / `code_impact` for the code graph."
+    "## ctxq\n\n\
+     This project is indexed by `ctxq` (MCP server `ctxq`). Use its tools instead of \
+     walking the tree or running `ctxq` in a shell (sandboxed agents such as Codex \
+     cannot launch it): `search` / `context` for specs and documentation, \
+     `code_symbol` / `code_callers` / `code_callees` / `code_path` / `code_impact` \
+     for the code graph. If the tools are missing, restart the agent and check `/mcp`."
         .to_string()
 }
 
@@ -96,5 +97,14 @@ mod tests {
     fn pointer_files_hold_a_single_at_reference() {
         assert_eq!(pointer_body("@AGENTS.md"), "@AGENTS.md");
         assert_eq!(pointer_body("@./AGENTS.md"), "@./AGENTS.md");
+    }
+
+    #[test]
+    fn agents_block_tells_sandboxed_agents_to_use_mcp() {
+        let body = agents_md_body();
+        assert!(body.contains("MCP server `ctxq`"));
+        assert!(body.contains("Codex"));
+        assert!(body.contains("/mcp"));
+        assert!(body.contains("shell"));
     }
 }

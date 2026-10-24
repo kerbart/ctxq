@@ -1,0 +1,15 @@
+{"q": "what is the install command for ctxq?", "expect": ["ctxq.dev/install.sh"], "kind": "exact", "split": "test"}
+{"q": "where does the installer put the binary?", "expect": [".local/bin"], "kind": "exact", "split": "test"}
+{"q": "does setup from home work?", "expect": ["--force-home"], "kind": "exact", "split": "test"}
+{"q": "what is the default local embedder called?", "expect": ["local-hash-v1-128"], "kind": "exact", "split": "test"}
+{"q": "default daemon sync interval in seconds", "expect": ["60"], "kind": "exact", "split": "test"}
+{"q": "how often are inventories re-scanned?", "expect": ["300"], "kind": "exact", "split": "test"}
+{"q": "MCP server name", "all": ["MCP server name is `ctxq`"], "kind": "exact", "split": "test"}
+{"q": "which tool for an exact port or container?", "expect": ["inventory"], "kind": "exact", "split": "test"}
+{"q": "are secret keys indexed?", "expect": ["quarantined"], "kind": "exact", "split": "test"}
+{"q": "where does the API key for openai embeddings live?", "expect": ["OPENAI_API_KEY"], "kind": "exact", "split": "test"}
+{"q": "how do I get real semantic search offline hashing is not enough?", "all": ["ollama"], "kind": "semantic", "split": "test"}
+{"q": "how does an agent ask a question over the docs?", "all": ["search"], "kind": "semantic", "split": "test"}
+{"q": "what happens if I run setup in my home directory?", "all": ["force-home"], "kind": "semantic", "split": "test"}
+{"q": "how do I install ctxq in one line?", "all": ["install.sh", "ctxq.dev"], "kind": "semantic", "split": "test"}
+{"q": "does the index stay fresh by itself?", "all": ["60"], "kind": "semantic", "split": "test"}

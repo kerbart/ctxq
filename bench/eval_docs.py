@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Relevance gate: replays a golden set against one or more engines.
 
-The golden set is private (it describes a real workspace): $DOCUMENTUM_GOLDEN,
+The golden set is private (it describes a real workspace): $CTXQ_GOLDEN,
 otherwise eval/golden.jsonl (ignored by git). Format: eval/README.md.
 
 Scoring: expect/all substrings over source + breadcrumb + text, top K. Engine:
-  next   - this repository (target/release/documentum); index in $DN_CACHE
+  next   - this repository (target/release/ctxq); index in $DN_CACHE
            (default /tmp/dn-cache), global options in $DN_ARGS (e.g. "--embeddings ollama")
 Usage: bench/eval_docs.py [--engines next] [--corpus /tmp/dn-corpus] [-v]
 """
@@ -13,8 +13,8 @@ import argparse, json, os, random, re, subprocess, sys, time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-GOLD = Path(os.environ.get("DOCUMENTUM_GOLDEN", ROOT / "eval" / "golden.jsonl"))
-BINS = {"next": str(ROOT / "target" / "release" / "documentum")}
+GOLD = Path(os.environ.get("CTXQ_GOLDEN", ROOT / "eval" / "golden.jsonl"))
+BINS = {"next": str(ROOT / "target" / "release" / "ctxq")}
 K = 5
 
 def rank(results, g):
@@ -32,7 +32,7 @@ def binary(name):
         extra = []
         if name == "next":
             if os.environ.get("DN_CACHE"):
-                env["DOCUMENTUM_CACHE_DIR"] = os.environ["DN_CACHE"]
+                env["CTXQ_CACHE_DIR"] = os.environ["DN_CACHE"]
             extra = os.environ.get("DN_ARGS", "").split()
         out = subprocess.run([BINS[name], *extra, "--path", corpus, "search", q, "-l", str(K),
                               "--json", "--no-daemon"],
@@ -59,8 +59,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--engines", default="next")
     ap.add_argument("--corpus", default="/tmp/dn-corpus")
-    ap.add_argument("--out", default=os.environ.get("DOCUMENTUM_EVAL_OUT", str(ROOT / "bench" / "last_rows.json")))
+    ap.add_argument("--out", default=os.environ.get("CTXQ_EVAL_OUT", str(ROOT / "bench" / "last_rows.json")))
     ap.add_argument("-v", action="store_true")
+    ap.add_argument("--min-mrr", type=float, default=0.0, help="fail if overall MRR is below this")
     a = ap.parse_args()
     names = a.engines.split(",")
     gold = [json.loads(l) for l in open(GOLD) if l.strip() and not l.startswith("//")]
@@ -82,6 +83,10 @@ def main():
             lat = sorted(r[name + "_ms"] for r in sub)[len(sub) // 2]
             print(f"{name:6} r@1={m['r@1']:.2f} r@3={m['r@3']:.2f} r@5={m['r@5']:.2f} "
                   f"MRR={m['mrr']:.3f} [{lo:.3f}–{hi:.3f}] miss={m['miss']} p50={lat:.0f}ms")
+            if kind == "all" and a.min_mrr and m["mrr"] < a.min_mrr:
+                print(f"FAIL: MRR {m['mrr']:.3f} < --min-mrr {a.min_mrr}", file=sys.stderr)
+                return 1
+    return 0
 
 if __name__ == "__main__":
     sys.exit(main())

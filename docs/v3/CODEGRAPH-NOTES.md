@@ -221,7 +221,7 @@ developed in parallel by another team: `src/mcp/` only depends on the
   scope). `detect_project_clients` serves the `--agent all` detection.
 - `src/setup/merge_json.rs`: pure JSON merge: `parse_root_object` explicitly
   rejects a non-object root without writing anything, `merge_entry`/
-  `remove_entry` only touch the `documentum` key at the end of the key path,
+  `remove_entry` only touch the `ctxq` key at the end of the key path,
   creating missing intermediate objects and refusing (without modifying `root`)
   if an intermediate key already exists in another shape. `apply()`
   orchestrates and returns `(changed, new_text)`: `changed = false` on a rerun
@@ -237,7 +237,7 @@ developed in parallel by another team: `src/mcp/` only depends on the
   exist yet. `backup_dir` and `timestamp` are always injected parameters: this
   module never resolves a cache directory nor reads the clock itself.
 - `src/setup/rules.rs`: block delimited by the markers
-  `<!-- documentum:begin -->`/`<!-- documentum:end -->`, `upsert_block`
+  `<!-- ctxq:begin -->`/`<!-- ctxq:end -->`, `upsert_block`
   (create if absent, replace only the content between markers otherwise,
   append at end of file if the file exists but has no block yet),
   `agents_md_body()` (content of the `AGENTS.md` block), `pointer_body()` (a
@@ -295,7 +295,7 @@ failures, no regression on the pre-existing `server::mcp::tests::*` tests
   (`base_dir`, `backup_dir`, `timestamp`): `src/setup/` resolves neither the
   `HOME`/cache directory, nor the system clock, nor the list of clients to
   apply for `--agent all`/`--uninstall`; this CLI wiring (flags, path
-  resolution, `documentum.toml`) is left to the team rewriting `src/cli/`
+  resolution, `ctxq.toml`) is left to the team rewriting `src/cli/`
   (out of scope for this mission).
 - **Content of the `.github/copilot-instructions.md` block**: not detailed by
   the spec beyond the pointer principle; treated like the other pointer files

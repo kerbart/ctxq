@@ -7,9 +7,10 @@ use serde_json::{json, Value};
 
 use crate::cli::config::ProjectPaths;
 use crate::cli::daemon::{self, format_results, legacy_json};
+use crate::cli::progress::IndexProgress;
 use crate::core::agent::{self, SearchArgs};
 use crate::core::docmeta::SearchFilters;
-use crate::core::hybrid::{self, DocEngine};
+use crate::core::hybrid::{self, DocEngine, IndexHooks};
 use crate::core::ingest::{self, IngestOptions, MapOptions};
 use crate::core::settings::Settings;
 use crate::core::settings::StoreMode;
@@ -20,6 +21,7 @@ use crate::core::vector::Embedder;
 pub(crate) fn sync_code_graph(
     paths: &ProjectPaths,
     settings: &Settings,
+    on_file: Option<&mut dyn FnMut(usize, &str)>,
 ) -> Result<Option<crate::code::sync::SyncReport>> {
     if !settings.code.enabled {
         return Ok(None);
@@ -35,10 +37,11 @@ pub(crate) fn sync_code_graph(
             .collect(),
         max_file_bytes: settings.collect.max_file_bytes,
     };
-    Ok(Some(crate::code::sync::sync_tree(
+    Ok(Some(crate::code::sync::sync_tree_with(
         &mut store,
         &paths.root_dir,
         &rules,
+        on_file,
     )?))
 }
 
@@ -49,78 +52,42 @@ fn paths(target: Option<&Path>) -> Result<ProjectPaths> {
 fn open_existing(target: Option<&Path>, embedder: Embedder) -> Result<(ProjectPaths, DocEngine)> {
     let paths = paths(target)?;
     if !paths.docs_db.exists() {
-        bail!(
-            "no index for {}; run `documentum sync`",
-            paths.root_dir.display()
-        );
+        bail!("no index for {}; run `ctxq sync`", paths.root_dir.display());
     }
     let engine = DocEngine::open_with_embedder(&paths.docs_db, embedder)?;
     Ok((paths, engine))
 }
 
-fn print_sync(report: &hybrid::SyncReport) {
-    eprintln!(
-        "Done: {} files seen, {} chunks, {} files resumed, {} empty, {} quarantined, {} unusable.",
-        report.files,
-        report.chunks,
-        report.changed,
-        report.empty,
-        report.quarantined,
-        report.unusable
-    );
+pub fn run_index(target: Option<&Path>, embedder: Embedder, force_home: bool) -> Result<()> {
+    index_or_sync(target, embedder, force_home, true)
 }
 
-pub fn run_index(target: Option<&Path>, embedder: Embedder) -> Result<()> {
-    let paths = paths(target)?;
-    let settings = Settings::load(&paths.root_dir)?;
-    eprintln!("1. Ouverture de l'index {}", paths.docs_db.display());
-    let mut engine = DocEngine::open_with_embedder(&paths.docs_db, embedder)?;
-    eprintln!("2. Reindexing {}", paths.root_dir.display());
-    let report = engine.reindex_directory(
-        &paths.root_dir,
-        Some(|i: usize, _changed: bool| {
-            if i.is_multiple_of(100) {
-                eprintln!("  files processed: {i}");
-            }
-        }),
-        None::<fn(usize, usize)>,
-        None::<fn(usize, usize)>,
-    )?;
-    eprintln!("3. Embeddings and database up to date");
-    if let Some(code) = sync_code_graph(&paths, &settings)? {
-        eprintln!(
-            "4. Code graph: {} files seen, {} extracted, {} unchanged",
-            code.scanned, code.extracted, code.skipped_unchanged
-        );
-    }
-    print_sync(&report);
-    Ok(())
+pub fn run_sync(target: Option<&Path>, embedder: Embedder, force_home: bool) -> Result<()> {
+    index_or_sync(target, embedder, force_home, false)
 }
 
-pub fn run_sync(target: Option<&Path>, embedder: Embedder) -> Result<()> {
+fn index_or_sync(
+    target: Option<&Path>,
+    embedder: Embedder,
+    force_home: bool,
+    full: bool,
+) -> Result<()> {
     let paths = paths(target)?;
+    crate::cli::config::refuse_home(&paths.root_dir, force_home)?;
     let settings = Settings::load(&paths.root_dir)?;
-    eprintln!("1. Ouverture de l'index {}", paths.docs_db.display());
-    let mut engine = DocEngine::open_with_embedder(&paths.docs_db, embedder)?;
-    eprintln!("2. Synchronisation de {}", paths.root_dir.display());
-    let report = engine.sync_directory_incremental(
-        &paths.root_dir,
-        Some(|i: usize, _changed: bool| {
-            if i.is_multiple_of(100) {
-                eprintln!("  files processed: {i}");
-            }
-        }),
-        None::<fn(usize, usize)>,
-        None::<fn(usize, usize)>,
+    let mut progress = IndexProgress::start(&paths, if full { "index" } else { "sync" });
+    let mut engine = DocEngine::open_with_embedder(&paths.docs_db, embedder.clone())?;
+    let report = if full {
+        engine.reindex_directory(&paths.root_dir, Some(&mut progress))?
+    } else {
+        engine.sync_directory_incremental(&paths.root_dir, Some(&mut progress))?
+    };
+    let code = sync_code_graph(
+        &paths,
+        &settings,
+        Some(&mut |n, rel| progress.on_code(n, rel)),
     )?;
-    eprintln!("3. Embeddings and database up to date");
-    if let Some(code) = sync_code_graph(&paths, &settings)? {
-        eprintln!(
-            "4. Code graph: {} files seen, {} extracted, {} unchanged",
-            code.scanned, code.extracted, code.skipped_unchanged
-        );
-    }
-    print_sync(&report);
+    progress.finish(&report, code.as_ref(), &embedder);
     Ok(())
 }
 
@@ -171,7 +138,13 @@ pub fn run_search(
         });
         if let Some(resp) = daemon::ask(&paths, &settings, &ask, true) {
             if resp["ok"].as_bool() != Some(true) {
-                bail!("{}", resp["error"].as_str().unwrap_or("daemon error"));
+                let err = resp["error"].as_str().unwrap_or("daemon error");
+                if err.contains("database is locked") || err.contains("Error code 5") {
+                    bail!(
+                        "index is busy (another ctxq is writing it). Retry in a moment, or `ctxq daemon --stop` then search again. ({err})"
+                    );
+                }
+                bail!("{err}");
             }
             emit(&resp["data"]);
             return Ok(());
@@ -264,9 +237,11 @@ pub fn run_doctor(target: Option<&Path>, workspaces: &[String], all: bool) -> Re
     }
     for (name, root) in roots {
         println!("# doctor {name} ({})", root.display());
-        let db = ProjectPaths::discover(Some(&root))?.docs_db;
+        let p = ProjectPaths::discover(Some(&root))?;
+        println!("{}", crate::cli::config::describe_index(&p));
+        let db = p.docs_db;
         if !db.exists() {
-            println!("index : absent ({})", db.display());
+            println!("index: missing ({})", db.display());
             continue;
         }
         let engine = DocEngine::open(&db)?;
@@ -275,6 +250,36 @@ pub fn run_doctor(target: Option<&Path>, workspaces: &[String], all: bool) -> Re
             .query_row("PRAGMA integrity_check", [], |r| r.get(0))
             .unwrap_or_else(|_| "error".into());
         println!("integrity: {check}");
+        let embedder_id: String = engine
+            .conn()
+            .query_row(
+                "SELECT value FROM index_meta WHERE key = 'embedder_id'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or_else(|_| "unknown".into());
+        if embedder_id.starts_with("local-hash") {
+            println!("embedder: {embedder_id} (hashed n-grams, not a neural model; BM25 leads)");
+        } else {
+            println!("embedder: {embedder_id}");
+        }
+        let files: usize = engine
+            .conn()
+            .query_row("SELECT COUNT(*) FROM doc_file_meta", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as usize;
+        let chunks: usize = engine
+            .conn()
+            .query_row("SELECT COUNT(*) FROM doc_chunks", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .unwrap_or(0) as usize;
+        if let Some(upgrade) =
+            crate::core::embed_hint::Upgrade::assess_embedder_id(files, chunks, &embedder_id)
+        {
+            println!("{}", upgrade.render_block());
+        }
         let c = engine.completeness(&root)?;
         println!(
             "coverage: indexed {} · empty {} · quarantined {} · unusable {} · unaccounted {}",
@@ -288,7 +293,7 @@ pub fn run_doctor(target: Option<&Path>, workspaces: &[String], all: bool) -> Re
             println!("  - {p} : {why}");
         }
         for p in &c.unaccounted {
-            println!("  - perdu : {p}");
+            println!("  - missing: {p}");
         }
         let last = engine
             .conn()
@@ -297,8 +302,8 @@ pub fn run_doctor(target: Option<&Path>, workspaces: &[String], all: bool) -> Re
                 [],
                 |r| r.get::<_, String>(0),
             )
-            .unwrap_or_else(|_| "jamais".into());
-        println!("dernier sync : {last}");
+            .unwrap_or_else(|_| "never".into());
+        println!("last sync: {last}");
         if c.unaccounted.is_empty() {
             println!("no document lost");
         }
@@ -307,13 +312,13 @@ pub fn run_doctor(target: Option<&Path>, workspaces: &[String], all: bool) -> Re
 }
 
 pub fn run_stats(workspace: Option<&str>, json_out: bool, purge: bool) -> Result<()> {
-    let base = std::env::var_os("DOCUMENTUM_CACHE_DIR")
+    let base = std::env::var_os("CTXQ_CACHE_DIR")
         .map(PathBuf::from)
         .or_else(|| {
             std::env::var_os("XDG_CACHE_HOME")
                 .map(PathBuf::from)
                 .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
-                .map(|p| p.join("documentum"))
+                .map(|p| p.join("ctxq"))
         })
         .context("cache introuvable")?;
     let db = base.join("telemetry.db");

@@ -27,6 +27,27 @@ use crate::core::vector::Embedder;
 pub const CHUNKER_VERSION: &str = "md-h2h3-v1";
 const SCHEMA_VERSION: &str = "1";
 
+/// Live progress for `index` / `sync`. All methods have empty defaults so
+/// callers that do not care (daemon, tests) pass `None`.
+pub trait IndexHooks {
+    /// One more file found while walking the tree (total still unknown).
+    fn on_scan(&mut self, found: usize, rel: &str) {
+        let _ = (found, rel);
+    }
+    /// Walk finished; `total` files will be indexed.
+    fn on_plan(&mut self, total: usize) {
+        let _ = total;
+    }
+    /// One file of the planned set was processed (`i` is 0-based).
+    fn on_file(&mut self, i: usize, total: usize, rel: &str, changed: bool) {
+        let _ = (i, total, rel, changed);
+    }
+    /// One source file visited while refreshing the code graph.
+    fn on_code(&mut self, scanned: usize, rel: &str) {
+        let _ = (scanned, rel);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SyncReport {
     pub files: usize,
@@ -170,11 +191,17 @@ impl DocEngine {
         }
         let allowed = allowed_sources(mem, filters);
         let router = IdRouter::new(settings.search.lookup_terms.as_deref())?;
-        let alpha = if router.is_identifier_query(query) {
+        let mut alpha = if router.is_identifier_query(query) {
             settings.search.alpha_id
         } else {
             settings.search.alpha
         };
+        // local-hash cosine is a weak signal (MRR ≈ 0.51 alone). Let BM25
+        // dominate: score = cosine + α·bm25_norm, so α ≥ 1.5 means lexical
+        // can outweigh a high hash cosine.
+        if self.embedder.is_local_hash() {
+            alpha = alpha.max(1.5);
+        }
         let qtoks: HashSet<String> = lexical::tokenize(query).into_iter().collect();
         let hits = match settings.search.fusion {
             crate::core::settings::Fusion::Rrf => rrf_hits(mem, &qv, &qtoks, &allowed, limit),
@@ -262,54 +289,40 @@ impl DocEngine {
         })
     }
 
-    pub fn sync_directory_incremental<A, B, C>(
+    pub fn sync_directory_incremental(
         &mut self,
         root: &Path,
-        on_file: Option<A>,
-        on_chunks: Option<B>,
-        on_embed: Option<C>,
-    ) -> Result<SyncReport>
-    where
-        A: Fn(usize, bool),
-        B: Fn(usize, usize),
-        C: Fn(usize, usize),
-    {
-        self.sync_root(root, false, on_file, on_chunks, on_embed)
+        hooks: Option<&mut dyn IndexHooks>,
+    ) -> Result<SyncReport> {
+        self.sync_root(root, false, hooks)
     }
 
-    pub fn reindex_directory<A, B, C>(
+    pub fn reindex_directory(
         &mut self,
         root: &Path,
-        on_file: Option<A>,
-        on_chunks: Option<B>,
-        on_embed: Option<C>,
-    ) -> Result<SyncReport>
-    where
-        A: Fn(usize, bool),
-        B: Fn(usize, usize),
-        C: Fn(usize, usize),
-    {
-        self.sync_root(root, true, on_file, on_chunks, on_embed)
+        hooks: Option<&mut dyn IndexHooks>,
+    ) -> Result<SyncReport> {
+        self.sync_root(root, true, hooks)
     }
 
-    fn sync_root<A, B, C>(
+    fn sync_root(
         &mut self,
         root: &Path,
         force: bool,
-        on_file: Option<A>,
-        on_chunks: Option<B>,
-        on_embed: Option<C>,
-    ) -> Result<SyncReport>
-    where
-        A: Fn(usize, bool),
-        B: Fn(usize, usize),
-        C: Fn(usize, usize),
-    {
+        mut hooks: Option<&mut dyn IndexHooks>,
+    ) -> Result<SyncReport> {
         let root = std::fs::canonicalize(root).unwrap_or_else(|_| root.to_path_buf());
         self.root = Some(root.clone());
         self.settings = Settings::load(&root).unwrap_or_else(|_| Settings::default());
         let scanner = SecretScanner::new(&self.settings.secrets)?;
-        let files = discover(&root, &self.settings)?;
+        let files = if let Some(ref mut h) = hooks {
+            discover_with(&root, &self.settings, Some(&mut **h))?
+        } else {
+            discover(&root, &self.settings)?
+        };
+        if let Some(h) = hooks.as_mut() {
+            h.on_plan(files.len());
+        }
         let stored_chunker = meta_get(&self.conn, "doc_chunker");
         let stored_embedder = meta_get(&self.conn, "embedder_id");
         let has_chunks: i64 = self
@@ -336,8 +349,8 @@ impl DocEngine {
             let path = root.join(rel);
             let meta_ok = !full && file_unchanged(&self.conn, rel, &path).unwrap_or(false);
             if meta_ok {
-                if let Some(cb) = &on_file {
-                    cb(i, false);
+                if let Some(h) = hooks.as_mut() {
+                    h.on_file(i, total, rel, false);
                 }
                 let text = read_for_meta(&path);
                 metas.push((
@@ -389,17 +402,14 @@ impl DocEngine {
                     record_file(&self.conn, rel, &path)?;
                     parse_issues::set_for_file(&self.conn, rel, &[])?;
                     store_chunks(&self.conn, &chunks)?;
-                    self.embed_chunks(&chunks, &on_embed)?;
+                    self.embed_chunks(&chunks)?;
                     metas.push((rel.clone(), docmeta::from_content(rel, &text)));
                 }
             }
             n_changed += 1;
             changed_paths.push(rel.clone());
-            if let Some(cb) = &on_file {
-                cb(i, true);
-            }
-            if let Some(cb) = &on_chunks {
-                cb(i + 1, total);
+            if let Some(h) = hooks.as_mut() {
+                h.on_file(i, total, rel, true);
             }
         }
         let removed = paths_not_in(&self.conn, "doc_file_meta", &seen)?;
@@ -439,11 +449,7 @@ impl DocEngine {
         })
     }
 
-    fn embed_chunks<C: Fn(usize, usize)>(
-        &self,
-        chunks: &[DocChunk],
-        on_embed: &Option<C>,
-    ) -> Result<()> {
+    fn embed_chunks(&self, chunks: &[DocChunk]) -> Result<()> {
         if chunks.is_empty() {
             return Ok(());
         }
@@ -454,9 +460,6 @@ impl DocEngine {
                 "INSERT OR REPLACE INTO chunk_vectors (chunk_id, vector) VALUES (?1, ?2)",
                 params![ch.id, vec_to_blob(&vec)],
             )?;
-        }
-        if let Some(cb) = on_embed {
-            cb(chunks.len(), chunks.len());
         }
         Ok(())
     }
@@ -513,7 +516,7 @@ impl DocEngine {
             if let Some(id) = stored {
                 if id != self.embedder.id() {
                     bail!(
-                        "inconsistent vectors (index {id}, embedder {}). Re-run `documentum sync` to re-embed.",
+                        "inconsistent vectors (index {id}, embedder {}). Re-run `ctxq sync` to re-embed.",
                         self.embedder.id()
                     );
                 }
@@ -972,6 +975,14 @@ fn embed_input(ch: &DocChunk) -> String {
 }
 
 pub fn discover(root: &Path, settings: &Settings) -> Result<Vec<String>> {
+    discover_with(root, settings, None)
+}
+
+fn discover_with(
+    root: &Path,
+    settings: &Settings,
+    mut hooks: Option<&mut dyn IndexHooks>,
+) -> Result<Vec<String>> {
     let filter = DiscoveryFilter::new(root, &settings.collect)?;
     let restricted = !settings.collect.extensions.is_empty();
     let mut rels = Vec::new();
@@ -1013,7 +1024,10 @@ pub fn discover(root: &Path, settings: &Settings) -> Result<Vec<String>> {
             if let Ok(rel) = dent.path().strip_prefix(root) {
                 let rel = rel.to_string_lossy().replace('\\', "/");
                 if !rel.is_empty() {
-                    rels.push(rel);
+                    rels.push(rel.clone());
+                    if let Some(h) = hooks.as_mut() {
+                        h.on_scan(rels.len(), &rel);
+                    }
                 }
             }
         }
@@ -1188,12 +1202,7 @@ fn init_schema(conn: &Connection) -> Result<()> {
 }
 
 fn open_conn(path: &Path) -> Result<Connection> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let conn = Connection::open(path).with_context(|| format!("opening {}", path.display()))?;
-    conn.busy_timeout(std::time::Duration::from_secs(5))?;
-    let _ = conn.pragma_update(None, "journal_mode", "WAL");
+    let conn = crate::core::sqlite::open(path)?;
     init_schema(&conn)?;
     Ok(conn)
 }
@@ -1236,11 +1245,16 @@ fn cache_get(conn: &Connection, embedder: &str, digest: &str) -> Result<Option<V
 }
 
 fn cache_put(conn: &Connection, embedder: &str, digest: &str, vector: &[f32]) -> Result<()> {
-    conn.execute(
+    match conn.execute(
         "INSERT OR REPLACE INTO embed_cache (embedder, digest, vector) VALUES (?1, ?2, ?3)",
         params![embedder, digest, vec_to_blob(vector)],
-    )?;
-    Ok(())
+    ) {
+        Ok(_) => Ok(()),
+        // A new query writes the embedding cache. Don't fail the search if the
+        // daemon refresher currently holds the write lock.
+        Err(e) if crate::core::sqlite::is_busy(&e) => Ok(()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 fn delete_source(conn: &Connection, rel: &str) -> Result<()> {
@@ -1459,6 +1473,14 @@ mod tests {
     }
 
     #[test]
+    fn local_hash_alpha_lets_bm25_beat_hash_cosine() {
+        // α ≥ 1.5: a perfect BM25 hit outranks a high hash cosine with weak BM25.
+        let hash_noise = fuse_score(0.9, 0.1, 1.0, 1.5);
+        let lexical_hit = fuse_score(0.2, 1.0, 1.0, 1.5);
+        assert!(lexical_hit > hash_noise, "{lexical_hit} vs {hash_noise}");
+    }
+
+    #[test]
     fn fusion_uses_absolute_ceiling() {
         assert!((fuse_score(0.4, 3.0, 6.0, 0.5) - 0.65).abs() < 1e-6);
         assert!((fuse_score(0.4, 3.0, 0.0, 0.5) - 0.4).abs() < 1e-6);
@@ -1478,14 +1500,7 @@ mod tests {
         )
         .unwrap();
         let mut engine = DocEngine::in_memory().unwrap();
-        engine
-            .sync_directory_incremental(
-                dir.path(),
-                None::<fn(usize, bool)>,
-                None::<fn(usize, usize)>,
-                None::<fn(usize, usize)>,
-            )
-            .unwrap();
+        engine.sync_directory_incremental(dir.path(), None).unwrap();
         let a = engine.search("port 4100", 5).unwrap();
         let b = engine.search("port 4100", 5).unwrap();
         let ids: Vec<_> = a
