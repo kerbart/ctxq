@@ -63,6 +63,9 @@ pub struct DiscoveryFilter {
     root: PathBuf,
     settings: CollectSettings,
     excludes: GlobSet,
+    /// The root is `$HOME`: its hidden top-level directories (`.cache`,
+    /// `.cargo`, `.config`, tool state…) are not knowledge.
+    home_root: bool,
 }
 
 impl DiscoveryFilter {
@@ -73,6 +76,7 @@ impl DiscoveryFilter {
             root: root.to_path_buf(),
             settings: settings.clone(),
             excludes,
+            home_root: crate::cli::config::is_home_root(root),
         })
     }
 
@@ -130,6 +134,13 @@ impl DiscoveryFilter {
             })
     }
 
+    fn listed_in_roots(&self, name: &str) -> bool {
+        self.settings.roots.iter().any(|r| {
+            let r = r.trim_start_matches("./").trim_end_matches('/');
+            r == name || r.starts_with(&format!("{name}/"))
+        })
+    }
+
     pub fn skip_dir(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
         // WalkBuilder is run with hidden(false) so `.github` is indexed; `.git`
@@ -137,10 +148,15 @@ impl DiscoveryFilter {
         if matches!(name, ".git" | ".svn" | ".hg") {
             return true;
         }
-        if path.parent() == Some(self.root.as_path())
-            && self.settings.exclude_top.iter().any(|t| t == name)
-        {
-            return true;
+        if path.parent() == Some(self.root.as_path()) {
+            if self.settings.exclude_top.iter().any(|t| t == name) {
+                return true;
+            }
+            // Indexing `$HOME` (--force-home): skip hidden top-level
+            // directories unless the user lists one in `roots`.
+            if self.home_root && name.starts_with('.') && !self.listed_in_roots(name) {
+                return true;
+            }
         }
         self.settings.exclude_dirs.iter().any(|d| d == name)
             || self
@@ -258,6 +274,28 @@ mod tests {
         let f = DiscoveryFilter::new(root, &s).unwrap();
         assert!(f.skip_file(&root.join("a.yaml"), 10));
         assert!(f.skip_file(&root.join("a.md"), 101));
+    }
+
+    #[test]
+    fn home_root_skips_hidden_top_level_dirs_unless_listed() {
+        let home = std::env::var_os("HOME").map(PathBuf::from).expect("HOME");
+        let s = CollectSettings::default();
+        let f = DiscoveryFilter::new(&home, &s).unwrap();
+        assert!(f.skip_dir(&home.join(".cache")));
+        assert!(f.skip_dir(&home.join(".cargo")));
+        assert!(!f.skip_dir(&home.join("projects")));
+        // Hidden directories deeper down (`.github`) stay indexed.
+        assert!(!f.skip_dir(&home.join("projects/.github")));
+        let listed = CollectSettings {
+            roots: vec![".notes/docs".into()],
+            ..Default::default()
+        };
+        let f = DiscoveryFilter::new(&home, &listed).unwrap();
+        assert!(!f.skip_dir(&home.join(".notes")));
+        // A normal project root is untouched.
+        let tmp = tempfile::tempdir().unwrap();
+        let f = DiscoveryFilter::new(tmp.path(), &s).unwrap();
+        assert!(!f.skip_dir(&tmp.path().join(".hidden")));
     }
 
     #[test]
