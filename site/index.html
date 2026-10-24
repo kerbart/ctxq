@@ -337,14 +337,14 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
       <pre><span class="prompt">$ </span>curl -fsSL https://ctxq.dev/install.sh | sh &amp;&amp; . "$HOME/.ctxq/env"</pre>
       <button class="copy" aria-label="Copy command"></button>
     </div>
-    <p class="small mut" style="margin-top:12px">Copy the whole line. <code>. ~/.ctxq/env</code> is what puts <code>ctxq</code> on <em>this</em> shell's PATH — a pipe cannot export to its parent. The installer also writes that source into your shell rc, so new terminals just work. Then, from a <em>project</em> directory: <code>ctxq setup</code>. Windows: use WSL. Binaries come from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a> (this site mirrors them). Linux x86_64 is musl-static.</p>
+    <p class="small mut" style="margin-top:12px">Copy the whole line. <code>. ~/.ctxq/env</code> is what puts <code>ctxq</code> on <em>this</em> shell's PATH — a pipe cannot export to its parent. The installer also writes that source into your shell rc, so new terminals just work. Then, from a <em>project</em> directory: <code>ctxq setup</code>. Windows: use WSL. Binaries come from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a>. Linux x86_64 is musl-static. This site mirrors the current build at <a href="/releases/SHA256SUMS">/releases</a>.</p>
     <h3 style="margin-top:22px">From source</h3>
     <p class="small mut">Source of truth: <a href="https://github.com/kerbart/ctxq">github.com/kerbart/ctxq</a>.</p>
     <div class="code" data-copy="cargo install --git https://github.com/kerbart/ctxq.git --locked">
       <pre><span class="prompt">$ </span>cargo install --git https://github.com/kerbart/ctxq.git --locked</pre>
       <button class="copy" aria-label="Copy command"></button>
     </div>
-    <p class="small mut" style="margin-top:14px">Override the destination with <code>CTXQ_BINDIR</code>. Archives: <a href="https://github.com/kerbart/ctxq/releases">GitHub</a> and <a href="https://ctxq.dev/releases/SHA256SUMS">/releases</a>.</p>
+    <p class="small mut" style="margin-top:14px">Override the destination with <code>CTXQ_BINDIR</code>. Archives: <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a>.</p>
   </div>
 </section>
 
@@ -352,7 +352,7 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
   <div class="wrap row">
     <span>ctxq <code id="ver-foot">v3</code></span>
     <a href="https://github.com/kerbart/ctxq">source</a>
-    <a href="/releases/SHA256SUMS">releases</a>
+    <a href="https://github.com/kerbart/ctxq/releases">releases</a>
     <span>MIT · Damien Kerbart</span>
   </div>
 </footer>
@@ -375,9 +375,9 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
   const ONE_LINER = 'curl -fsSL https://ctxq.dev/install.sh | sh && . "$HOME/.ctxq/env"';
   const CMDS = {
     linux: { prompt: '$ ', text: ONE_LINER,
-             note: 'Linux x86_64 static musl on ctxq.dev now · arm64 with a GitHub release · SHA-256 verified · no root · <code>ctxq</code> is on PATH when the line returns' },
+             note: 'Linux x86_64 musl from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a> · arm64 and macOS from the same tag · SHA-256 verified · no root · <code>ctxq</code> is on PATH when the line returns' },
     mac:   { prompt: '$ ', text: ONE_LINER,
-             note: 'Same one-liner. macOS archives ship with a tagged GitHub release; until then see <a href="#install">#install</a>' },
+             note: 'Same one-liner. macOS archives ship from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a>.' },
   };
   function detectOS() {
     const ua = navigator.userAgent || '', p = navigator.platform || '';

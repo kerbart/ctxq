@@ -5,9 +5,12 @@ The golden set is private (it describes a real workspace): $CTXQ_GOLDEN,
 otherwise eval/golden.jsonl (ignored by git). Format: eval/README.md.
 
 Scoring: expect/all substrings over source + breadcrumb + text, top K. Engine:
-  next   - this repository (target/release/ctxq); index in $DN_CACHE
-           (default /tmp/dn-cache), global options in $DN_ARGS (e.g. "--embeddings ollama")
-Usage: bench/eval_docs.py [--engines next] [--corpus /tmp/dn-corpus] [-v]
+  next   - this repository (target/release/ctxq); index in $CTXQ_CACHE_DIR
+           (or $DN_CACHE, default ~/.cache/ctxq), extra flags in $DN_ARGS
+           (e.g. "--embeddings ollama"). `--corpus` is resolved from this
+           process's cwd; the binary is launched with cwd=/tmp so a
+           repo-root ctxq.toml cannot leak into the gate.
+Usage: bench/eval_docs.py [--engines next] [--corpus eval/public/corpus] [-v]
 """
 import argparse, json, os, random, re, subprocess, sys, time
 from pathlib import Path
@@ -34,11 +37,25 @@ def binary(name):
             if os.environ.get("DN_CACHE"):
                 env["CTXQ_CACHE_DIR"] = os.environ["DN_CACHE"]
             extra = os.environ.get("DN_ARGS", "").split()
-        out = subprocess.run([BINS[name], *extra, "--path", corpus, "search", q, "-l", str(K),
-                              "--json", "--no-daemon"],
-                             capture_output=True, text=True, cwd="/tmp", env=env).stdout
+        # cwd=/tmp so a developer ctxq.toml at the repo root cannot leak in.
+        # The corpus must still be the tree we indexed, so resolve it first.
+        corpus = str(Path(corpus).expanduser().resolve())
+        proc = subprocess.run(
+            [BINS[name], *extra, "--path", corpus, "search", q, "-l", str(K),
+             "--json", "--no-daemon"],
+            capture_output=True, text=True, cwd="/tmp", env=env,
+        )
+        if proc.returncode != 0:
+            raise SystemExit(
+                f"ctxq search failed (exit {proc.returncode}) path={corpus}: "
+                f"{(proc.stderr or proc.stdout).strip()[:800]}"
+            )
+        try:
+            payload = json.loads(proc.stdout or "{}")
+        except json.JSONDecodeError:
+            raise SystemExit(f"ctxq search returned non-JSON: {proc.stdout[:800]!r}")
         res = [{"source": r.get("source", ""), "breadcrumb": r.get("breadcrumb") or "",
-                "text": r.get("text", "")} for r in json.loads(out or "{}").get("results", [])]
+                "text": r.get("text", "")} for r in payload.get("results", [])]
         return res
     return run
 

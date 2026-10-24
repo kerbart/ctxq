@@ -1,7 +1,7 @@
 # Release: on a `v*` tag, build the single binary for every platform, publish
-# the archives + SHA256SUMS as a GitHub release. `install.sh` downloads from
-# https://ctxq.dev/releases/ (current build) and, when CTXQ_VERSION is a tag,
-# from GitHub as fallback. Both sources are SHA-256 verified.
+# the archives + SHA256SUMS as a GitHub release (canonical). `install.sh`
+# downloads from GitHub first; https://ctxq.dev/releases/ is a mirror.
+# Both sources are SHA-256 verified.
 #
 # Cut a release with:  scripts/release.sh v3.0.1   (tags, pushes, CI does the rest)
 name: release
