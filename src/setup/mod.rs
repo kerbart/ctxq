@@ -13,6 +13,7 @@ pub mod backup;
 pub mod clients;
 pub mod merge_json;
 pub mod merge_toml;
+pub mod prompt;
 pub mod rules;
 
 pub use apply::{apply_client, Outcome};

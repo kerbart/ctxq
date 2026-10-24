@@ -24,9 +24,14 @@ pub enum ConfigFormat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntryShape {
-    /// `{"command", "args", "env"}` — Claude/Cursor/Gemini/Antigravity/Generic/Windsurf/
-    /// Claude Desktop/Codex (TOML table, same fields).
+    /// `{"command", "args", "env"}` — Cursor/Gemini/Antigravity/Generic/Windsurf/
+    /// Claude Desktop/Codex/Grok (TOML table, same fields).
     Standard,
+    /// Claude Code: `{"type": "stdio", "command", "args", "env"}`. `type` is what Copilot
+    /// CLI accepts when it also reads the project `.mcp.json`.
+    StdioCommand,
+    /// Copilot CLI: stdio plus `"tools": ["*"]` in `~/.copilot/mcp-config.json`.
+    CopilotStdio,
     /// VS Code: `{"type": "stdio", "command", "args", "env"}`.
     VsCodeStdio,
     /// Zed: `{"source": "custom", "command", "args", "env"}`.
@@ -63,18 +68,19 @@ pub struct ClientSpec {
 
 impl ClientSpec {
     /// User-scope clients pin `["mcp", "--path", repo]` so a global config still
-    /// indexes the repo that ran `setup`. Codex does not: a pinned path would
-    /// steal every other project the next time `setup` runs, and Codex already
-    /// launches MCP from the session cwd (plus a project `.codex/config.toml`).
+    /// indexes the repo that ran `setup`. Codex, Copilot and Grok do not: a
+    /// pinned path would steal every other project the next time `setup` runs.
+    /// Those CLIs launch MCP from the session cwd (and, for Codex and Grok, a
+    /// project config that does pin `cwd`).
     pub fn pins_repo_path(&self) -> bool {
-        self.scope == Scope::User && self.id != "codex-user"
+        self.scope == Scope::User && !matches!(self.id, "codex-user" | "grok-user" | "copilot")
     }
 
-    /// Codex project entries set `cwd` so the stdio server starts in the repo
-    /// even if the client process cwd is elsewhere. User-scope Codex must not:
-    /// that would reintroduce last-project-wins.
+    /// Project entries for Codex and Grok set `cwd` so the stdio server starts
+    /// in the repo even if the client process cwd is elsewhere. Their user-scope
+    /// entries must not: that would reintroduce last-project-wins.
     pub fn includes_cwd(&self) -> bool {
-        self.id == "codex" && self.scope == Scope::Project
+        self.scope == Scope::Project && matches!(self.id, "codex" | "grok")
     }
 }
 
@@ -90,7 +96,7 @@ pub const CLIENTS: &[ClientSpec] = &[
         format: ConfigFormat::Json,
         relative_config_path: ".mcp.json",
         root_key_path: &["mcpServers"],
-        entry_shape: EntryShape::Standard,
+        entry_shape: EntryShape::StdioCommand,
         detect_marker: None,
     },
     ClientSpec {
@@ -150,7 +156,7 @@ pub const CLIENTS: &[ClientSpec] = &[
         format: ConfigFormat::Json,
         relative_config_path: ".mcp.json",
         root_key_path: &["mcpServers"],
-        entry_shape: EntryShape::Standard,
+        entry_shape: EntryShape::StdioCommand,
         detect_marker: None,
     },
     ClientSpec {
@@ -203,6 +209,36 @@ pub const CLIENTS: &[ClientSpec] = &[
         entry_shape: EntryShape::Standard,
         detect_marker: None,
     },
+    ClientSpec {
+        id: "copilot",
+        env_client_id: "copilot",
+        scope: Scope::User,
+        format: ConfigFormat::Json,
+        relative_config_path: ".copilot/mcp-config.json",
+        root_key_path: &["mcpServers"],
+        entry_shape: EntryShape::CopilotStdio,
+        detect_marker: None,
+    },
+    ClientSpec {
+        id: "grok",
+        env_client_id: "grok",
+        scope: Scope::Project,
+        format: ConfigFormat::Toml,
+        relative_config_path: ".grok/config.toml",
+        root_key_path: &["mcp_servers"],
+        entry_shape: EntryShape::Standard,
+        detect_marker: Some(".grok"),
+    },
+    ClientSpec {
+        id: "grok-user",
+        env_client_id: "grok",
+        scope: Scope::User,
+        format: ConfigFormat::Toml,
+        relative_config_path: ".grok/config.toml",
+        root_key_path: &["mcp_servers"],
+        entry_shape: EntryShape::Standard,
+        detect_marker: None,
+    },
 ];
 
 pub fn client_by_id(id: &str) -> Option<&'static ClientSpec> {
@@ -244,6 +280,12 @@ pub fn build_entry(spec: &ClientSpec, command: &str, repo_root: Option<&str>) ->
     let env = json!({ "CTXQ_CLIENT": spec.env_client_id });
     let mut entry = match spec.entry_shape {
         EntryShape::Standard => json!({ "command": command, "args": args, "env": env }),
+        EntryShape::StdioCommand => json!({
+            "type": "stdio", "command": command, "args": args, "env": env
+        }),
+        EntryShape::CopilotStdio => json!({
+            "type": "stdio", "command": command, "args": args, "env": env, "tools": ["*"]
+        }),
         EntryShape::VsCodeStdio => json!({
             "type": "stdio", "command": command, "args": args, "env": env
         }),
@@ -277,29 +319,191 @@ pub fn detect_project_clients(workspace_root: &Path) -> Vec<&'static ClientSpec>
         .collect()
 }
 
-/// Clients `setup --client all` should register: project clients present in the
-/// workspace, plus Codex (project `.codex/config.toml` *and* user
-/// `~/.codex/config.toml`) when `$HOME/.codex` exists.
+/// One row of the CLI catalog. `auto` families are registered by a plain
+/// `ctxq setup` when the CLI is installed (home marker or binary on `PATH`).
+/// The others stay opt-in (`--client` or `--interactive`) unless a project
+/// marker already selects them.
+pub struct CliFamily {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub detail: &'static str,
+    pub client_ids: &'static [&'static str],
+    pub home_markers: &'static [&'static str],
+    pub binaries: &'static [&'static str],
+    pub auto: bool,
+}
+
+pub const CLI_FAMILIES: &[CliFamily] = &[
+    CliFamily {
+        id: "claude",
+        label: "Claude Code",
+        detail: ".mcp.json",
+        client_ids: &["claude"],
+        home_markers: &[".claude", ".claude.json"],
+        binaries: &["claude"],
+        auto: true,
+    },
+    CliFamily {
+        id: "copilot",
+        label: "Copilot",
+        detail: "~/.copilot/mcp-config.json",
+        client_ids: &["copilot"],
+        home_markers: &[".copilot"],
+        binaries: &["copilot"],
+        auto: true,
+    },
+    CliFamily {
+        id: "codex",
+        label: "Codex",
+        detail: ".codex/config.toml + ~/.codex/config.toml",
+        client_ids: &["codex", "codex-user"],
+        home_markers: &[".codex"],
+        binaries: &["codex"],
+        auto: true,
+    },
+    CliFamily {
+        id: "grok",
+        label: "Grok",
+        detail: ".grok/config.toml + ~/.grok/config.toml",
+        client_ids: &["grok", "grok-user"],
+        home_markers: &[".grok"],
+        binaries: &["grok"],
+        auto: true,
+    },
+    CliFamily {
+        id: "gemini",
+        label: "Gemini CLI",
+        detail: ".gemini/settings.json",
+        client_ids: &["gemini"],
+        home_markers: &[".gemini"],
+        binaries: &["gemini"],
+        auto: true,
+    },
+    CliFamily {
+        id: "cursor",
+        label: "Cursor",
+        detail: ".cursor/mcp.json",
+        client_ids: &["cursor"],
+        home_markers: &[".cursor"],
+        binaries: &["cursor"],
+        auto: false,
+    },
+    CliFamily {
+        id: "vscode",
+        label: "VS Code",
+        detail: ".vscode/mcp.json",
+        client_ids: &["vscode"],
+        home_markers: &[".vscode"],
+        binaries: &["code"],
+        auto: false,
+    },
+    CliFamily {
+        id: "zed",
+        label: "Zed",
+        detail: ".zed/settings.json",
+        client_ids: &["zed"],
+        home_markers: &[".zed"],
+        binaries: &["zed"],
+        auto: false,
+    },
+    CliFamily {
+        id: "antigravity",
+        label: "Antigravity",
+        detail: ".agents/mcp_config.json",
+        client_ids: &["antigravity"],
+        home_markers: &[],
+        binaries: &["agy", "antigravity"],
+        auto: false,
+    },
+    CliFamily {
+        id: "antigravity-user",
+        label: "Antigravity user",
+        detail: "~/.gemini/config (pins this repo)",
+        client_ids: &["antigravity-user"],
+        home_markers: &[".gemini"],
+        binaries: &["agy", "antigravity"],
+        auto: false,
+    },
+    CliFamily {
+        id: "windsurf",
+        label: "Windsurf",
+        detail: "~/.codeium/windsurf (pins this repo)",
+        client_ids: &["windsurf"],
+        home_markers: &[".codeium/windsurf"],
+        binaries: &["windsurf"],
+        auto: false,
+    },
+    CliFamily {
+        id: "claude-desktop",
+        label: "Claude Desktop",
+        detail: "Claude Desktop config (pins this repo)",
+        client_ids: &["claude-desktop"],
+        home_markers: &[".config/Claude", "Library/Application Support/Claude"],
+        binaries: &[],
+        auto: false,
+    },
+];
+
+/// Clients `setup` registers by default: project clients present in the
+/// workspace, plus every [`CLI_FAMILIES`] entry with `auto` whose CLI is
+/// installed (home marker or binary on `PATH`).
 ///
-/// Codex cannot run `ctxq` in its shell sandbox (`bwrap: loopback: Failed
-/// RTM_NEWADDR`). MCP registration is the only path that works out of the box,
-/// so we write it without waiting for `--client codex`.
+/// Codex cannot run `ctxq` in its shell sandbox. MCP registration is the only
+/// path that works out of the box, so it is one of the auto CLIs.
 pub fn detect_setup_clients(
     workspace_root: &Path,
     home: Option<&Path>,
 ) -> Vec<&'static ClientSpec> {
+    detect_setup_clients_with(workspace_root, home, path_has_bin)
+}
+
+pub(crate) fn detect_setup_clients_with(
+    workspace_root: &Path,
+    home: Option<&Path>,
+    has_bin: impl Fn(&str) -> bool,
+) -> Vec<&'static ClientSpec> {
     let mut out = detect_project_clients(workspace_root);
-    let codex_installed = home.map(|h| h.join(".codex").is_dir()).unwrap_or(false);
-    if codex_installed {
-        for id in ["codex", "codex-user"] {
+    for family in CLI_FAMILIES {
+        if !family.auto || !family_installed(family, home, &has_bin) {
+            continue;
+        }
+        for id in family.client_ids {
             if let Some(spec) = client_by_id(id) {
-                if !out.iter().any(|s| s.id == spec.id) {
-                    out.push(spec);
-                }
+                push_unique(&mut out, spec);
             }
         }
     }
     out
+}
+
+pub(crate) fn path_has_bin(name: &str) -> bool {
+    let Some(path) = std::env::var_os("PATH") else {
+        return false;
+    };
+    std::env::split_paths(&path).any(|dir| dir.join(name).is_file())
+}
+
+pub(crate) fn family_installed(
+    family: &CliFamily,
+    home: Option<&Path>,
+    has_bin: &impl Fn(&str) -> bool,
+) -> bool {
+    if family.binaries.iter().any(|bin| has_bin(bin)) {
+        return true;
+    }
+    let Some(home) = home else {
+        return false;
+    };
+    family.home_markers.iter().any(|marker| {
+        let path = home.join(marker);
+        path.is_file() || path.is_dir()
+    })
+}
+
+fn push_unique<'a>(out: &mut Vec<&'a ClientSpec>, spec: &'a ClientSpec) {
+    if !out.iter().any(|s| s.id == spec.id) {
+        out.push(spec);
+    }
 }
 
 #[cfg(test)]
@@ -419,10 +623,11 @@ mod tests {
         let home = tempfile::tempdir().unwrap();
         std::fs::create_dir(home.path().join(".codex")).unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let ids: Vec<&str> = detect_setup_clients(workspace.path(), Some(home.path()))
-            .iter()
-            .map(|c| c.id)
-            .collect();
+        let ids: Vec<&str> =
+            detect_setup_clients_with(workspace.path(), Some(home.path()), |_| false)
+                .iter()
+                .map(|c| c.id)
+                .collect();
         assert!(ids.contains(&"codex"));
         assert!(ids.contains(&"codex-user"));
     }
@@ -431,11 +636,62 @@ mod tests {
     fn detect_setup_clients_skips_codex_when_not_installed() {
         let home = tempfile::tempdir().unwrap();
         let workspace = tempfile::tempdir().unwrap();
-        let ids: Vec<&str> = detect_setup_clients(workspace.path(), Some(home.path()))
-            .iter()
-            .map(|c| c.id)
-            .collect();
+        let ids: Vec<&str> =
+            detect_setup_clients_with(workspace.path(), Some(home.path()), |_| false)
+                .iter()
+                .map(|c| c.id)
+                .collect();
         assert!(!ids.contains(&"codex"));
         assert!(!ids.contains(&"codex-user"));
+    }
+
+    #[test]
+    fn claude_entry_declares_stdio_so_copilot_can_read_the_same_file() {
+        let spec = client_by_id("claude").unwrap();
+        let entry = build_entry(spec, "ctxq", Some("/repo"));
+        assert_eq!(entry["type"], "stdio");
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert!(entry.get("tools").is_none());
+    }
+
+    #[test]
+    fn copilot_entry_is_stdio_with_all_tools_and_no_pinned_path() {
+        let spec = client_by_id("copilot").unwrap();
+        assert!(!spec.pins_repo_path());
+        let entry = build_entry(spec, "/usr/bin/ctxq", Some("/repo"));
+        assert_eq!(entry["type"], "stdio");
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert_eq!(entry["tools"], json!(["*"]));
+        assert_eq!(entry["env"]["CTXQ_CLIENT"], "copilot");
+    }
+
+    #[test]
+    fn grok_project_sets_cwd_and_user_follows_the_session() {
+        let project = client_by_id("grok").unwrap();
+        let entry = build_entry(project, "ctxq", Some("/abs/repo"));
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert_eq!(entry["cwd"], "/abs/repo");
+        let user = client_by_id("grok-user").unwrap();
+        assert!(!user.pins_repo_path());
+        let entry = build_entry(user, "ctxq", Some("/abs/repo"));
+        assert_eq!(entry["args"], json!(["mcp"]));
+        assert!(entry.get("cwd").is_none());
+    }
+
+    #[test]
+    fn auto_clis_register_from_a_home_marker_or_a_binary() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(home.path().join(".copilot")).unwrap();
+        let workspace = tempfile::tempdir().unwrap();
+        let ids: Vec<&str> =
+            detect_setup_clients_with(workspace.path(), Some(home.path()), |bin| bin == "grok")
+                .iter()
+                .map(|c| c.id)
+                .collect();
+        assert!(ids.contains(&"copilot"));
+        assert!(ids.contains(&"grok"));
+        assert!(ids.contains(&"grok-user"));
+        assert!(!ids.contains(&"vscode"));
+        assert!(!ids.contains(&"claude"));
     }
 }

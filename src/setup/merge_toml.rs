@@ -1,4 +1,4 @@
-//! Idempotent TOML config merge for the Codex CLI (§3.1, the only `toml` client): navigate/
+//! Idempotent TOML config merge for Codex and Grok (§3.1): navigate/
 //! create the `root_key_path` table chain with `toml_edit`, preserving comments/formatting of
 //! everything else in the document, and upsert or remove the `ctxq` sub-table.
 
@@ -107,6 +107,21 @@ mod tests {
         entry.cwd = Some("/abs/repo".to_string());
         let (_, text) = apply(None, &["mcp_servers"], Some(&entry)).unwrap();
         assert!(text.contains("cwd = \"/abs/repo\""));
+        assert!(!text.contains("--path"));
+    }
+
+    #[test]
+    fn merge_keeps_unrelated_tables() {
+        let original = "[cli]\ninstaller = \"internal\"\n";
+        let mut entry = sample_entry();
+        entry.args = vec!["mcp".to_string()];
+        entry.env = vec![("CTXQ_CLIENT".to_string(), "grok".to_string())];
+        let (changed, text) = apply(Some(original), &["mcp_servers"], Some(&entry)).unwrap();
+        assert!(changed);
+        assert!(text.contains("[cli]"));
+        assert!(text.contains("installer = \"internal\""));
+        assert!(text.contains("[mcp_servers.ctxq]"));
+        assert!(text.contains("command = \"ctxq\""));
         assert!(!text.contains("--path"));
     }
 

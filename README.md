@@ -101,10 +101,11 @@ ctxq setup                      # 1. index + register ctxq in your agents
 ctxq search "how do I deploy the api?"   # 2. ask it yourself
 ```
 
-That is all. **Your agents** (Claude Code, Codex, Cursor, VS Code, Zed…) now
-list ctxq among their tools — restart them once. You never start the
-MCP server yourself: the editor launches `ctxq mcp` in the background
-and talks to it over stdin/stdout.
+That is all. **Your CLIs** (Claude Code, Copilot, Codex, Grok, Gemini) and
+any editor already configured in the repo now list ctxq among their tools —
+restart them once. `ctxq setup --interactive` prints the catalog and lets
+you pick. You never start the MCP server yourself: the CLI launches
+`ctxq mcp` in the background and talks to it over stdin/stdout.
 
 ## Where the index lives
 
@@ -125,10 +126,14 @@ from `$HOME` uses A (which also contains the engie files as a subset).
 Markdown, office, PDF and code are indexed; `.git`, archives, secrets and
 gitignored files are skipped.
 
-Codex is registered automatically when `~/.codex/` exists (`ctxq setup`
-writes `.codex/config.toml` in the project and `~/.codex/config.toml`).
-Restart Codex, then `/mcp`. Do not run `ctxq` inside the Codex shell: its
-bwrap sandbox cannot launch it; the MCP tools are the path that works.
+`ctxq setup` registers the CLIs it finds. Claude Code gets `.mcp.json`.
+Copilot gets `~/.copilot/mcp-config.json`. Codex and Grok get a project
+file (`.codex/config.toml`, `.grok/config.toml`) and a user file
+(`~/.codex/config.toml`, `~/.grok/config.toml`). Copilot, Codex and Grok
+follow the directory you launch them from: their user entry has no
+`--path`, so one repo does not steal the others. Restart the CLI, then
+check its MCP list. Do not run `ctxq` inside the Codex shell: its bwrap
+sandbox cannot launch it; the MCP tools are the path that works.
 
 `search` keeps the index warm in a background daemon it starts on first use
 (milliseconds per query afterwards; docs re-sync every 60s). `--no-daemon`

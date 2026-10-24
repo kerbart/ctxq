@@ -649,18 +649,21 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
   single process if `--workspace` is repeated; the first is the default, the
   tools take a `workspace` parameter to target the others. `--workspace` takes
   precedence over `--path`.
-- **`setup [--client CLIENT]... [--uninstall] [--command PATH] [--rules[=false]]
-  [--skill] [--hooks] [--in-repo]`**: registers the MCP server with clients
-  (§3.1). `--client` (alias `--agent`, repeatable) takes `all` or a client
-  identifier: `claude`, `cursor`, `vscode`, `gemini`, `antigravity`, `zed`,
-  `generic`, `antigravity-user`, `codex`, `codex-user`, `windsurf`,
-  `claude-desktop`. The default `all` covers detected **project** clients
-  plus Codex when `$HOME/.codex/` exists (project `.codex/config.toml` and
-  user `~/.codex/config.toml`). Other **user** clients (`antigravity-user`,
-  `windsurf`, `claude-desktop`) must be named explicitly and receive
-  `--path <repo>` pinned in their config. Codex user entries do **not** pin
-  `--path`: Codex launches MCP from the session cwd, and a pinned path would
-  steal every other project.
+- **`setup [--client CLIENT]... [--interactive] [--uninstall] [--command PATH]
+  [--rules[=false]] [--skill] [--hooks] [--in-repo]`**: registers the MCP
+  server with clients (§3.1). `--client` (alias `--agent`, repeatable) takes
+  `all` or a client identifier: `claude`, `copilot`, `codex`, `codex-user`,
+  `grok`, `grok-user`, `cursor`, `vscode`, `gemini`, `antigravity`, `zed`,
+  `generic`, `antigravity-user`, `windsurf`, `claude-desktop`. With no
+  `--client`, setup registers project clients already present in the repo
+  plus installed CLIs: Claude Code, Copilot, Codex, Grok and Gemini.
+  `--interactive` prints that catalog and reads one line (numbers, names,
+  `all`, `none`, or empty to keep the defaults). It needs a terminal; otherwise
+  it exits and names `--client`. It cannot be combined with `--client`.
+  Other **user** clients (`antigravity-user`, `windsurf`, `claude-desktop`)
+  stay opt-in and receive `--path <repo>` pinned in their config. Copilot,
+  Codex user and Grok user do **not** pin `--path`: those CLIs launch MCP from
+  the session cwd, and a pinned path would steal every other project.
   `--uninstall` removes the entry instead of adding it; `--command PATH` is
   the command written in the configs (default: absolute path of the current
   binary); `--rules` (default true, `--rules=false` to skip) generates or
@@ -669,7 +672,8 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
   `ctxq-investigate` skill under `.claude/skills/` and
   `.agents/skills/`; `--hooks` installs a background-resync post-commit git
   hook (opt-in); `--in-repo` puts the index under `.ctxq/` instead of
-  the user cache. Flow: indexing → MCP registration → rules-file generation →
+  the user cache. Flow: choose clients → index (or incremental sync when
+  `docs.db` already exists) → MCP registration → rules-file generation →
   optional skill and git hook.
 - **`changes [PATHS...] [--base REF] [--head REF] [--depth 2] [--json]`**:
   impact of a diff: symbols touched, their transitive callers (depth clamped
@@ -698,29 +702,33 @@ A hidden subcommand `q` is the former name of `search` (§2.5).
 
 The server is always registered under the key **`ctxq`**. For a **user**
 client (global scope, never pinned to a repo except via `--path`), the written
-arguments include `["mcp", "--path", "<absolute-repo>"]`, except **Codex
-user** (`codex-user`): only `["mcp"]`, because Codex starts the stdio server
-from the session cwd and a pinned `--path` would steal every other project.
-For a **project** client, only `["mcp"]` (the client launches from the
-project directory). Codex **project** entries also set `cwd` to the absolute
-repo. An environment variable `CTXQ_CLIENT` (value = client identifier, e.g.
-`"claude-code"`, `"cursor"`, `"vscode"`, `"gemini-cli"`, `"antigravity"`,
-`"codex"`, `"windsurf"`, `"claude-desktop"`, `"zed"`) is added to the entry.
+arguments include `["mcp", "--path", "<absolute-repo>"]`, except **Copilot**,
+**Codex user** and **Grok user**: only `["mcp"]`, because those CLIs start
+the stdio server from the session cwd and a pinned `--path` would steal every
+other project. For a **project** client, only `["mcp"]` (the client launches
+from the project directory). Codex and Grok **project** entries also set
+`cwd` to the absolute repo. An environment variable `CTXQ_CLIENT` (value =
+client identifier, e.g. `"claude-code"`, `"copilot"`, `"cursor"`, `"vscode"`,
+`"gemini-cli"`, `"antigravity"`, `"codex"`, `"grok"`, `"windsurf"`,
+`"claude-desktop"`, `"zed"`) is added to the entry.
 
 | Client | Scope | Config file | Root key | Entry shape |
 |---|---|---|---|---|
-| Claude Code | project | `.mcp.json` | `mcpServers.ctxq` | `{command, args, env}` |
-| Cursor | project | `.cursor/mcp.json` | `mcpServers.ctxq` | same as Claude |
-| VS Code / Copilot | project | `.vscode/mcp.json` | `servers.ctxq` | `{type: "stdio", command, args, env}` |
-| Gemini CLI | project | `.gemini/settings.json` | `mcpServers.ctxq` | same as Claude |
-| Antigravity (project) | project | `.agents/mcp_config.json` | `mcpServers.ctxq` | same as Claude |
+| Claude Code | project | `.mcp.json` | `mcpServers.ctxq` | `{type: "stdio", command, args, env}` |
+| Cursor | project | `.cursor/mcp.json` | `mcpServers.ctxq` | `{command, args, env}` |
+| VS Code | project | `.vscode/mcp.json` | `servers.ctxq` | `{type: "stdio", command, args, env}` |
+| Gemini CLI | project | `.gemini/settings.json` | `mcpServers.ctxq` | `{command, args, env}` |
+| Antigravity (project) | project | `.agents/mcp_config.json` | `mcpServers.ctxq` | `{command, args, env}` |
 | Zed | project | `.zed/settings.json` | `context_servers.ctxq` | `{source: "custom", command, args, env}` |
 | Generic | project | `.mcp.json` | `mcpServers.ctxq` | identical to Claude Code (alias) |
-| Antigravity (user) | user | `~/.gemini/config/mcp_config.json` | `mcpServers.ctxq` | same + `--path` |
+| Antigravity (user) | user | `~/.gemini/config/mcp_config.json` | `mcpServers.ctxq` | `{command, args, env}` + `--path` |
 | Codex CLI (project) | project | `.codex/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env`, `cwd` as a TOML table |
 | Codex CLI (user) | user | `~/.codex/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env` (no `--path`, no `cwd`) |
-| Windsurf | user | `~/.codeium/windsurf/mcp_config.json` | `mcpServers.ctxq` | same + `--path` |
-| Claude Desktop | user | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`; Linux: `~/.config/Claude/claude_desktop_config.json`; Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers.ctxq` | same + `--path` |
+| Copilot CLI | user | `~/.copilot/mcp-config.json` | `mcpServers.ctxq` | `{type: "stdio", command, args, env, tools: ["*"]}` (no `--path`) |
+| Grok (project) | project | `.grok/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env`, `cwd` |
+| Grok (user) | user | `~/.grok/config.toml` | `[mcp_servers.ctxq]` (TOML) | `command`, `args`, `env` (no `--path`, no `cwd`) |
+| Windsurf | user | `~/.codeium/windsurf/mcp_config.json` | `mcpServers.ctxq` | `{command, args, env}` + `--path` |
+| Claude Desktop | user | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`; Linux: `~/.config/Claude/claude_desktop_config.json`; Windows: `%APPDATA%\Claude\claude_desktop_config.json` | `mcpServers.ctxq` | `{command, args, env}` + `--path` |
 
 Common rules: read the existing file if present (JSON or TOML depending on the
 client), **merge** while preserving any other entry already present (never
@@ -735,10 +743,15 @@ touches neither the file nor the backups. `--uninstall` removes only the
 `ctxq` key and leaves the rest intact. "Client present" detection (for
 `--client all`) by a marker specific to each project client (`.cursor/`,
 `.vscode/`, `.zed/`, `.gemini/`, `.agents/`, `.codex/` directory, or presence
-of the config file itself). User clients other than Codex are **never**
-auto-detected by `--client all`, only named explicitly: a global config is
-not touched without being asked for by name. **Codex is auto-detected** when
-`$HOME/.codex/` exists, because its shell sandbox cannot run `ctxq` — MCP
+of the config file itself) or, for the auto CLIs, because the CLI is
+installed: a home marker (`~/.claude`, `~/.copilot`, `~/.codex`, `~/.grok`,
+`~/.gemini`) or the binary on `PATH`. Those CLIs are Claude Code, Copilot,
+Codex, Grok and Gemini. Copilot, Codex and Grok are registered at user scope
+without `--path` so the server follows the directory the CLI is launched
+from; Codex and Grok also get a project file with `cwd` set to the repo.
+Other user clients are **never** auto-detected, only named explicitly: a
+global config that pins `--path` is not touched without being asked. Codex
+is in the auto set because its shell sandbox cannot run `ctxq` — MCP
 registration is the only path that works out of the box. After registering
 Codex, `setup` prints a reminder to restart the session and check `/mcp`.
 

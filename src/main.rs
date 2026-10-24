@@ -191,9 +191,12 @@ enum Commands {
     },
     #[command(about = "Registers the MCP server with clients")]
     Setup {
-        /// Client (`all` or an identifier: claude, cursor, vscode, gemini, codex, …). Repeatable. Default `all` picks project clients and Codex if ~/.codex exists.
+        /// Client (`all` or an identifier: claude, copilot, codex, grok, cursor, vscode, …). Repeatable. Default picks installed CLIs (Claude Code, Copilot, Codex, Grok, Gemini) plus project clients already present.
         #[arg(long = "client", visible_alias = "agent", value_name = "CLIENT")]
         client: Vec<String>,
+        /// Ask which CLIs should receive the MCP server. One numbered list, one line.
+        #[arg(long, short = 'i')]
+        interactive: bool,
         #[arg(long)]
         uninstall: bool,
         #[arg(long)]
@@ -508,6 +511,7 @@ fn main() -> anyhow::Result<()> {
             hooks,
             in_repo,
             force_home,
+            interactive,
         } => {
             let embedder = if uninstall {
                 ctxq::core::vector::Embedder::local()
@@ -524,6 +528,7 @@ fn main() -> anyhow::Result<()> {
                 hooks,
                 in_repo,
                 force_home,
+                interactive,
                 embedder,
             })?;
         }

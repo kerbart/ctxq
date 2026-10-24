@@ -1,7 +1,7 @@
 //! Commands that tie together the document core, the code graph and the MCP server:
 //! `serve`, `setup`, `changes`, `explore`, `context`.
 
-use std::io::{self, IsTerminal, Read};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -21,6 +21,8 @@ use crate::mcp::server::{McpServer, WorkspaceConfig};
 use crate::mcp::tools::docs;
 use crate::setup::apply::Outcome;
 use crate::setup::rules::{self, agents_md_body, pointer_body};
+use crate::setup::clients::path_has_bin;
+use crate::setup::prompt::{parse_menu_line, render_menu, setup_menu};
 use crate::setup::{apply_client, client_by_id, detect_setup_clients, ClientSpec, Scope, CLIENTS};
 
 const SKILL_MD: &str = include_str!("templates/ctxq-investigate.SKILL.md");
@@ -107,6 +109,7 @@ pub struct SetupOptions<'a> {
     pub hooks: bool,
     pub in_repo: bool,
     pub force_home: bool,
+    pub interactive: bool,
     pub embedder: Embedder,
 }
 
@@ -121,12 +124,19 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
     if opts.in_repo {
         std::fs::create_dir_all(root.join(".ctxq"))?;
     }
+    let chosen = chosen_client_ids(&opts, &root)?;
     let paths = ProjectPaths::discover(Some(&root))?;
     if !opts.uninstall {
-        commands::run_index(Some(&paths.root_dir), opts.embedder, opts.force_home)?;
+        // A second setup is how you add a CLI. Rebuild only when there is no
+        // index yet; otherwise the incremental sync is the whole point.
+        if paths.docs_db.is_file() {
+            commands::run_sync(Some(&paths.root_dir), opts.embedder.clone(), opts.force_home)?;
+        } else {
+            commands::run_index(Some(&paths.root_dir), opts.embedder.clone(), opts.force_home)?;
+        }
     }
 
-    let selected = resolve_clients(&paths.root_dir, opts.clients)?;
+    let selected = resolve_clients(&paths.root_dir, &chosen, !opts.interactive)?;
     let command = match opts.command {
         Some(path) => path.to_string_lossy().into_owned(),
         None => std::env::current_exe()
@@ -244,12 +254,43 @@ fn pointer_files(clients: &[&ClientSpec]) -> Vec<(&'static str, &'static str, &'
     out
 }
 
-fn resolve_clients(root: &Path, requested: &[String]) -> Result<Vec<&'static ClientSpec>> {
-    let requested: Vec<String> = if requested.is_empty() {
-        vec!["all".into()]
-    } else {
-        requested.to_vec()
-    };
+fn chosen_client_ids(opts: &SetupOptions<'_>, root: &Path) -> Result<Vec<String>> {
+    if !opts.interactive {
+        return Ok(opts.clients.to_vec());
+    }
+    if !opts.clients.is_empty() {
+        bail!("pass either --client or --interactive, not both");
+    }
+    let menu = setup_menu(root, home_dir().as_deref(), path_has_bin);
+    if !io::stdin().is_terminal() {
+        bail!(
+            "--interactive needs a terminal.\n{}\nPass --client instead ({}).",
+            render_menu(&menu),
+            CLIENTS.iter().map(|c| c.id).collect::<Vec<_>>().join(", ")
+        );
+    }
+    println!("{}", render_menu(&menu));
+    print!("> ");
+    io::stdout().flush().ok();
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    let ids = parse_menu_line(&line, &menu).map_err(|e| anyhow::anyhow!(e))?;
+    Ok(ids.into_iter().map(str::to_string).collect())
+}
+
+fn resolve_clients(
+    root: &Path,
+    requested: &[String],
+    fallback_all: bool,
+) -> Result<Vec<&'static ClientSpec>> {
+    if requested.is_empty() {
+        return Ok(if fallback_all {
+            detect_setup_clients(root, home_dir().as_deref())
+        } else {
+            Vec::new()
+        });
+    }
+    let requested: Vec<String> = requested.to_vec();
     let known = CLIENTS.iter().map(|c| c.id).collect::<Vec<_>>().join(", ");
     let mut out: Vec<&ClientSpec> = Vec::new();
     for id in &requested {
