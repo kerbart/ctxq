@@ -12,5 +12,7 @@ description: Co-retrieve documentation and the code graph with ctxq before editi
 5. After a diff, call `code_impact` (or the `changes` command) to list callers and the documents that mention the touched symbols.
 6. Call `code_sync` after editing source files so the graph matches the tree.
 
-Prefer these tools before a blind repository walk. Do not shell `ctxq`
-(Codex sandbox cannot launch it); the MCP server is the path that works.
+Prefer these tools before a blind repository walk. If the MCP tools are
+missing or blocked, run `ctxq search`, `ctxq context`, `ctxq explore` and
+`ctxq changes` in the shell. Codex cannot: its sandbox cannot launch the
+binary, so MCP is the only path there.

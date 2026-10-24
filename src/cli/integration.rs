@@ -14,6 +14,7 @@ use crate::cli::config::{self, ProjectPaths};
 use crate::code::query::{self, SymbolHit};
 use crate::code::store::CodeStore;
 use crate::core::hybrid::DocEngine;
+use crate::core::settings::{EmbedBackend, Settings};
 use crate::core::vector::Embedder;
 use crate::mcp::budget;
 use crate::mcp::docs_engine::WorkspaceDocsBackend;
@@ -22,6 +23,10 @@ use crate::mcp::tools::docs;
 use crate::setup::apply::Outcome;
 use crate::setup::rules::{self, agents_md_body, pointer_body};
 use crate::setup::clients::path_has_bin;
+use crate::setup::embed::{
+    config_path, parse_embed_menu_line, parse_embed_spec, render_embed_menu, write_config,
+    EmbedChoice, EmbedWrite,
+};
 use crate::setup::prompt::{parse_menu_line, render_menu, setup_menu};
 use crate::setup::{apply_client, client_by_id, detect_setup_clients, ClientSpec, Scope, CLIENTS};
 
@@ -110,6 +115,10 @@ pub struct SetupOptions<'a> {
     pub in_repo: bool,
     pub force_home: bool,
     pub interactive: bool,
+    /// Persists `[embed]` before indexing. `ollama` is qwen3-embedding:0.6b.
+    pub embed: Option<&'a str>,
+    /// Global `--embeddings`: this run only, not written.
+    pub backend_override: Option<EmbedBackend>,
     pub embedder: Embedder,
 }
 
@@ -124,15 +133,49 @@ pub fn run_setup(opts: SetupOptions<'_>) -> Result<()> {
     if opts.in_repo {
         std::fs::create_dir_all(root.join(".ctxq"))?;
     }
+    // Provider first: a different embedder rebuilds vectors, so the choice
+    // has to land in ctxq.toml before index/sync. Both questions run before
+    // that work, while the user is still at the keyboard.
+    let embed_choice = if opts.uninstall {
+        None
+    } else {
+        resolve_embed_choice(&opts, &root)?
+    };
+    if let Some(choice) = &embed_choice {
+        persist_embed(&root, choice)?;
+    }
     let chosen = chosen_client_ids(&opts, &root)?;
+    let embedder = if opts.uninstall {
+        opts.embedder.clone()
+    } else {
+        let settings = Settings::load(&root)?;
+        if embed_choice.is_none() {
+            println!("{}", current_embed_line(&settings));
+            if !opts.interactive && settings.embed.backend == EmbedBackend::Local {
+                println!(
+                    "For Ollama and qwen3-embedding: ctxq setup --embed ollama"
+                );
+            }
+        }
+        if let Some(over) = opts.backend_override {
+            if over != settings.embed.backend {
+                println!(
+                    "this run uses --embeddings {} (ctxq.toml is unchanged by that flag)",
+                    backend_name(over)
+                );
+            }
+        }
+        Embedder::from_settings(&settings, opts.backend_override)?
+    };
     let paths = ProjectPaths::discover(Some(&root))?;
     if !opts.uninstall {
         // A second setup is how you add a CLI. Rebuild only when there is no
         // index yet; otherwise the incremental sync is the whole point.
+        // A provider change still re-embeds: the stored embedder id no longer matches.
         if paths.docs_db.is_file() {
-            commands::run_sync(Some(&paths.root_dir), opts.embedder.clone(), opts.force_home)?;
+            commands::run_sync(Some(&paths.root_dir), embedder, opts.force_home)?;
         } else {
-            commands::run_index(Some(&paths.root_dir), opts.embedder.clone(), opts.force_home)?;
+            commands::run_index(Some(&paths.root_dir), embedder, opts.force_home)?;
         }
     }
 
@@ -252,6 +295,81 @@ fn pointer_files(clients: &[&ClientSpec]) -> Vec<(&'static str, &'static str, &'
         }
     }
     out
+}
+
+fn resolve_embed_choice(opts: &SetupOptions<'_>, root: &Path) -> Result<Option<EmbedChoice>> {
+    if let Some(spec) = opts.embed {
+        return parse_embed_spec(spec)
+            .map(Some)
+            .map_err(|e| anyhow::anyhow!(e));
+    }
+    if !opts.interactive {
+        return Ok(None);
+    }
+    let settings = Settings::load(root)?;
+    let backend = backend_name(settings.embed.backend);
+    let label = match settings.embed.backend {
+        EmbedBackend::Ollama | EmbedBackend::OpenAi => {
+            format!("{backend} {}", settings.embed_model())
+        }
+        EmbedBackend::Onnx => "onnx".into(),
+        EmbedBackend::Local => "local-hash".into(),
+    };
+    let menu = render_embed_menu(backend, &label);
+    if !io::stdin().is_terminal() {
+        bail!(
+            "--interactive needs a terminal.\n{menu}\nPass --embed instead (local, ollama, openai, onnx)."
+        );
+    }
+    println!("{menu}");
+    print!("> ");
+    io::stdout().flush().ok();
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    parse_embed_menu_line(&line).map_err(|e| anyhow::anyhow!(e))
+}
+
+fn persist_embed(root: &Path, choice: &EmbedChoice) -> Result<()> {
+    let ctxq_config = std::env::var_os("CTXQ_CONFIG").map(PathBuf::from);
+    let path = config_path(root, ctxq_config.as_deref());
+    let wrote = write_config(&path, choice).map_err(|e| anyhow::anyhow!(e))?;
+    let shown = display_config(root, &path);
+    match wrote {
+        EmbedWrite::SkippedDefault => println!("embedder: local (default)"),
+        EmbedWrite::Unchanged => println!("embedder: {} (unchanged)", choice.summary()),
+        EmbedWrite::Written => {
+            println!("embedder: {} → {shown}", choice.summary());
+            println!("this setup re-embeds if that provider differs from the index.");
+        }
+    }
+    Ok(())
+}
+
+fn current_embed_line(settings: &Settings) -> String {
+    match settings.embed.backend {
+        EmbedBackend::Local => "embedder: local-hash".into(),
+        EmbedBackend::Onnx => "embedder: onnx".into(),
+        EmbedBackend::Ollama | EmbedBackend::OpenAi => format!(
+            "embedder: {} {}",
+            backend_name(settings.embed.backend),
+            settings.embed_model()
+        ),
+    }
+}
+
+fn backend_name(backend: EmbedBackend) -> &'static str {
+    match backend {
+        EmbedBackend::Local => "local",
+        EmbedBackend::Onnx => "onnx",
+        EmbedBackend::Ollama => "ollama",
+        EmbedBackend::OpenAi => "openai",
+    }
+}
+
+fn display_config(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .map(|rel| rel.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
 }
 
 fn chosen_client_ids(opts: &SetupOptions<'_>, root: &Path) -> Result<Vec<String>> {

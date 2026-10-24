@@ -194,9 +194,15 @@ enum Commands {
         /// Client (`all` or an identifier: claude, copilot, codex, grok, cursor, vscode, …). Repeatable. Default picks installed CLIs (Claude Code, Copilot, Codex, Grok, Gemini) plus project clients already present.
         #[arg(long = "client", visible_alias = "agent", value_name = "CLIENT")]
         client: Vec<String>,
-        /// Ask which CLIs should receive the MCP server. One numbered list, one line.
+        /// Ask the embedding provider, then which CLIs should receive the MCP server.
+        /// Two numbered lists, one line each. `--embed` skips the first question.
         #[arg(long, short = 'i')]
         interactive: bool,
+        /// Embedding provider written to ctxq.toml before indexing.
+        /// `ollama` is qwen3-embedding:0.6b on http://localhost:11434.
+        /// Also `local`, `onnx`, `openai`, `ollama:MODEL`, `ollama:MODEL@URL`.
+        #[arg(long, value_name = "PROVIDER")]
+        embed: Option<String>,
         #[arg(long)]
         uninstall: bool,
         #[arg(long)]
@@ -512,12 +518,11 @@ fn main() -> anyhow::Result<()> {
             in_repo,
             force_home,
             interactive,
+            embed,
         } => {
-            let embedder = if uninstall {
-                ctxq::core::vector::Embedder::local()
-            } else {
-                resolve_embedder(cli.path.as_deref(), cli.embeddings)?
-            };
+            // Rebuilt after `[embed]` is written. Resolving it here would
+            // reject a broken current backend before `--embed` can replace it.
+            let embedder = ctxq::core::vector::Embedder::local();
             run_setup(SetupOptions {
                 target: cli.path.as_deref(),
                 clients: &client,
@@ -529,6 +534,8 @@ fn main() -> anyhow::Result<()> {
                 in_repo,
                 force_home,
                 interactive,
+                embed: embed.as_deref(),
+                backend_override: cli.embeddings.map(Into::into),
                 embedder,
             })?;
         }

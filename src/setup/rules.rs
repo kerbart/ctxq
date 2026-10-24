@@ -5,15 +5,18 @@
 pub const BEGIN_MARKER: &str = "<!-- ctxq:begin -->";
 pub const END_MARKER: &str = "<!-- ctxq:end -->";
 
-/// The generated `AGENTS.md` block content: a short pointer telling an agent to prefer the
-/// `ctxq` MCP tools over blind grepping.
+/// The generated `AGENTS.md` block content: prefer the MCP tools, and if that
+/// server is missing or blocked, run the same queries with the `ctxq` binary.
+/// Codex is the exception: its sandbox cannot launch the binary.
 pub fn agents_md_body() -> String {
     "## ctxq\n\n\
-     This project is indexed by `ctxq` (MCP server `ctxq`). Use its tools instead of \
-     walking the tree or running `ctxq` in a shell (sandboxed agents such as Codex \
-     cannot launch it): `search` / `context` for specs and documentation, \
+     This project is indexed by `ctxq` (MCP server `ctxq`). Prefer its tools over \
+     walking the tree: `search` / `context` for specs and documentation, \
      `code_symbol` / `code_callers` / `code_callees` / `code_path` / `code_impact` \
-     for the code graph. If the tools are missing, restart the agent and check `/mcp`."
+     for the code graph. If those tools are missing or blocked by policy, run the \
+     CLI instead of grepping: `ctxq search \"…\"`, `ctxq context \"…\"`, \
+     `ctxq explore <symbol>`, `ctxq changes`. Codex cannot: its bwrap sandbox \
+     blocks the binary, so only MCP works there (restart, then `/mcp`)."
         .to_string()
 }
 
@@ -100,11 +103,13 @@ mod tests {
     }
 
     #[test]
-    fn agents_block_tells_sandboxed_agents_to_use_mcp() {
+    fn agents_block_falls_back_to_the_cli_when_mcp_is_blocked() {
         let body = agents_md_body();
         assert!(body.contains("MCP server `ctxq`"));
+        assert!(body.contains("blocked by policy"));
+        assert!(body.contains("ctxq search"));
+        assert!(body.contains("ctxq explore"));
         assert!(body.contains("Codex"));
-        assert!(body.contains("/mcp"));
-        assert!(body.contains("shell"));
+        assert!(body.contains("bwrap"));
     }
 }

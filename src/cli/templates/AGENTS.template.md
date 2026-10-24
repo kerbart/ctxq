@@ -2,8 +2,10 @@
 
 This repository is indexed by `ctxq`.
 
-Use the `ctxq` MCP tools. Do not run `ctxq` in a sandboxed shell (Codex
-`bwrap` cannot launch it).
+Use the `ctxq` MCP tools. If they are missing or blocked by policy, run
+`ctxq search`, `ctxq context`, `ctxq explore` and `ctxq changes` instead.
+Codex cannot: its `bwrap` sandbox cannot launch the binary, so only MCP
+works there.
 
 1. `inventory` — exact rows (port, container, domain, unit)
 2. `search` — ranked passages with source lines

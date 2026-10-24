@@ -57,7 +57,7 @@ impl Upgrade {
         let size = format_size(self.files, self.chunks);
         if self.neural {
             format!(
-                "hint  {size} on local-hash — BM25 finds keywords, not meaning. Plug Ollama: see `ctxq doctor`."
+                "hint  {size} on local-hash — BM25 finds keywords, not meaning. Plug Ollama: `ctxq setup --embed ollama` (see `ctxq doctor`)."
             )
         } else {
             format!("hint  {size} — consider Qdrant. See `ctxq doctor`.")
@@ -73,7 +73,7 @@ impl Upgrade {
                 "hint  {size} indexed with local-hash. Keyword search works; meaning does not."
             ));
             lines.push(
-                "      Point ctxq at an embedding server, save as ctxq.toml, then `ctxq sync`:"
+                "      `ctxq setup --embed ollama` writes this and re-embeds. Or save it as ctxq.toml, then `ctxq sync`:"
                     .into(),
             );
             lines.push(String::new());

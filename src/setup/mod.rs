@@ -11,6 +11,7 @@
 pub mod apply;
 pub mod backup;
 pub mod clients;
+pub mod embed;
 pub mod merge_json;
 pub mod merge_toml;
 pub mod prompt;

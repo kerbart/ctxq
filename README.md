@@ -103,8 +103,12 @@ ctxq search "how do I deploy the api?"   # 2. ask it yourself
 
 That is all. **Your CLIs** (Claude Code, Copilot, Codex, Grok, Gemini) and
 any editor already configured in the repo now list ctxq among their tools —
-restart them once. `ctxq setup --interactive` prints the catalog and lets
-you pick. You never start the MCP server yourself: the CLI launches
+restart them once. `ctxq setup --interactive` asks two questions, one line
+each: the embedding provider, then which CLIs get the server.
+`ctxq setup --embed ollama` writes that provider into `ctxq.toml` before
+indexing (qwen3-embedding:0.6b on `http://localhost:11434`). An empty answer
+keeps the current one. `--embeddings` still overrides a single run and does
+not save. You never start the MCP server yourself: the CLI launches
 `ctxq mcp` in the background and talks to it over stdin/stdout.
 
 ## Where the index lives

@@ -427,6 +427,11 @@ Backend selection: `[embed].backend` (`local`|`onnx`|`ollama`|`openai`, default
 embedder (non-consented cost and network dependency): a backend change
 detected on opening schedules a full re-embedding at the **next explicit
 `sync`**, never automatically in the course of a search.
+`ctxq setup --embed PROVIDER` is that consent: it writes `[embed]` into
+`ctxq.toml` (other tables stay) and the setup that follows re-embeds when
+the provider differs from the index. `ollama` means
+`qwen3-embedding:0.6b` at `http://localhost:11434`. `--embeddings` still
+overrides one process and does not write the file.
 
 When the stored embedder is `local-hash-*` and the corpus is large
 (≥ 150 files or ≥ 1 500 chunks), `index` / `sync` / `setup` / `doctor`
@@ -649,17 +654,24 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
   single process if `--workspace` is repeated; the first is the default, the
   tools take a `workspace` parameter to target the others. `--workspace` takes
   precedence over `--path`.
-- **`setup [--client CLIENT]... [--interactive] [--uninstall] [--command PATH]
+- **`setup [--client CLIENT]... [--interactive] [--embed PROVIDER] [--uninstall] [--command PATH]
   [--rules[=false]] [--skill] [--hooks] [--in-repo]`**: registers the MCP
-  server with clients (§3.1). `--client` (alias `--agent`, repeatable) takes
+  server with clients (§3.1). `--embed` writes the embedding provider into
+  `ctxq.toml` before indexing (`local`, `onnx`, `ollama`, `openai`,
+  `qwen` as an alias of `ollama`, `ollama:MODEL`, `ollama:MODEL@URL`).
+  `ollama` with no model is `qwen3-embedding:0.6b`. `--client` (alias `--agent`, repeatable) takes
   `all` or a client identifier: `claude`, `copilot`, `codex`, `codex-user`,
   `grok`, `grok-user`, `cursor`, `vscode`, `gemini`, `antigravity`, `zed`,
   `generic`, `antigravity-user`, `windsurf`, `claude-desktop`. With no
   `--client`, setup registers project clients already present in the repo
   plus installed CLIs: Claude Code, Copilot, Codex, Grok and Gemini.
-  `--interactive` prints that catalog and reads one line (numbers, names,
-  `all`, `none`, or empty to keep the defaults). It needs a terminal; otherwise
-  it exits and names `--client`. It cannot be combined with `--client`.
+  `--interactive` asks two questions, one line each. The first is the
+  embedding provider (numbers, `local` / `ollama` / `qwen` / `openai` /
+  `onnx`, a spec such as `ollama:MODEL@URL`, or empty to keep the current
+  one). `--embed` skips that question. The second is the client catalog
+  (numbers, names, `all`, `none`, or empty to keep the defaults). It needs
+  a terminal; otherwise it exits and names `--embed` and `--client`. It
+  cannot be combined with `--client`.
   Other **user** clients (`antigravity-user`, `windsurf`, `claude-desktop`)
   stay opt-in and receive `--path <repo>` pinned in their config. Copilot,
   Codex user and Grok user do **not** pin `--path`: those CLIs launch MCP from
@@ -672,9 +684,12 @@ directory), `--embeddings {local|onnx|ollama|openai}` (overrides
   `ctxq-investigate` skill under `.claude/skills/` and
   `.agents/skills/`; `--hooks` installs a background-resync post-commit git
   hook (opt-in); `--in-repo` puts the index under `.ctxq/` instead of
-  the user cache. Flow: choose clients → index (or incremental sync when
-  `docs.db` already exists) → MCP registration → rules-file generation →
-  optional skill and git hook.
+  the user cache. Flow: choose the embedding provider (`--embed` or the
+  first interactive question; empty keeps the current one and does not
+  create a file for the default local embedder) → choose clients → index
+  (or incremental sync when `docs.db` already exists; a provider change
+  still re-embeds) → MCP registration → rules-file generation → optional
+  skill and git hook.
 - **`changes [PATHS...] [--base REF] [--head REF] [--depth 2] [--json]`**:
   impact of a diff: symbols touched, their transitive callers (depth clamped
   to 1-5), and the document passages that mention them (see §5). The diff is
@@ -754,6 +769,11 @@ global config that pins `--path` is not touched without being asked. Codex
 is in the auto set because its shell sandbox cannot run `ctxq` — MCP
 registration is the only path that works out of the box. After registering
 Codex, `setup` prints a reminder to restart the session and check `/mcp`.
+
+The `AGENTS.md` block tells the agent to prefer the MCP tools, and to run
+`ctxq search` / `ctxq context` / `ctxq explore` / `ctxq changes` when those
+tools are missing or blocked. Codex is the exception: its sandbox cannot
+launch the binary, so only MCP works there.
 
 Rules files (pointer to `AGENTS.md`, added only if absent from the file):
 `CLAUDE.md` (`@AGENTS.md`) for Claude Code, `GEMINI.md` (`@./AGENTS.md`) for
