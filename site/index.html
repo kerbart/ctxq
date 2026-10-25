@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>ctxq — a local knowledge index for AI agents, one binary</title>
 <meta name="description" content="ctxq indexes your docs, office files, PDFs, live inventories and code for your AI agent: small sourced passages over MCP. One Rust binary, local first. Ask the index, get the line.">
-<meta property="og:image" content="https://ctxq.dev/hero-flat.webp">
 <link rel="canonical" href="https://ctxq.dev/">
 <link rel="icon" href="/favicon.ico" sizes="48x48">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
@@ -15,7 +14,20 @@
 <meta property="og:site_name" content="ctxq">
 <meta property="og:title" content="ctxq — a local knowledge index for AI agents">
 <meta property="og:description" content="Ask the index, get the line. Docs, inventories and code — sourced passages over MCP. One binary.">
-<meta property="og:url" content="https://ctxq.dev">
+<meta property="og:url" content="https://ctxq.dev/">
+<meta property="og:locale" content="en_US">
+<meta property="og:image" content="https://ctxq.dev/og.jpg">
+<meta property="og:image:secure_url" content="https://ctxq.dev/og.jpg">
+<meta property="og:image:type" content="image/jpeg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="ctxq: a pile of scattered documents threaded into one glowing index. Ask the index, get the line.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="ctxq — a local knowledge index for AI agents">
+<meta name="twitter:description" content="Ask the index, get the line. Docs, inventories and code — sourced passages over MCP. One binary.">
+<meta name="twitter:image" content="https://ctxq.dev/og.jpg">
+<meta name="twitter:image:alt" content="ctxq: scattered documents threaded into one glowing index.">
+<meta name="theme-color" content="#0a0a0b">
 <style>
   :root{
     --bg:#0a0a0b;--fg:#f4f4f5;--mut:#7d7d83;--accent:#e8b84a;--code:#19191c;
@@ -192,6 +204,22 @@
   @media (max-width:520px){ .demo .screen{padding:12px 12px 14px} .demo .cx .user,.demo .cx .input{margin-left:-12px;margin-right:-12px;padding-left:12px;padding-right:12px} }
   @media (prefers-reduced-motion:reduce){.demo .cursor,.demo .bcur.blink,.demo .shimmer{animation:none}.demo .ln{transition:none}}
 </style>
+<!-- Matomo -->
+<script>
+  var _paq = window._paq = window._paq || [];
+  _paq.push(['disableCookies']);
+  _paq.push(['trackPageView']);
+  _paq.push(['enableLinkTracking']);
+  _paq.push(['enableHeartBeatTimer']);
+  (function() {
+    var u="https://matomo.kerliane.eu/";
+    _paq.push(['setTrackerUrl', u+'matomo.php']);
+    _paq.push(['setSiteId', '6']);
+    var d=document, g=d.createElement('script'), s=d.getElementsByTagName('script')[0];
+    g.async=true; g.src=u+'matomo.js'; s.parentNode.insertBefore(g,s);
+  })();
+</script>
+<!-- End Matomo Code -->
 </head>
 <body>
 
@@ -340,6 +368,7 @@ Rules: no sudo, do not edit project files yourself, stop and quote the exact err
       const text = block.getAttribute('data-copy') || block.querySelector('pre').innerText;
       try { await navigator.clipboard.writeText(text); }
       catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      (window._paq = window._paq || []).push(['trackEvent', 'copy', btn.getAttribute('aria-label') || 'copy']);
       btn.innerHTML = ICON_OK; btn.classList.add('copied');
       setTimeout(() => { btn.innerHTML = ICON_COPY; btn.classList.remove('copied'); }, 1600);
     });
