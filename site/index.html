@@ -109,7 +109,88 @@
 
   footer.site{padding:36px 0 48px;border-top:1px solid var(--line);font-size:13.5px}
   footer .row{display:flex;gap:18px;flex-wrap:wrap;color:var(--mut)}
+  .code.paste pre{white-space:pre-wrap;font-size:12.5px;line-height:1.6;max-height:300px;overflow-y:auto}
   .hero-art { display:block; width:100%; height:auto; margin:28px 0 8px; }
+
+  /* ---- hero demo (animated terminal) ---- */
+  .demo{--soft:#c9c9ce;--ok:#7fbf8a;--claude:#d77757;--cdx:#5fc4d0;--ease:cubic-bezier(.65,0,.35,1);--line:rgba(255,255,255,.1);
+    font-family:var(--mono);margin:8px 0 26px;min-height:calc(clamp(380px,52svh,440px) + 44px);
+    display:flex;flex-direction:column;justify-content:center}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
+
+  
+
+  /* terminal window: invisible during the intro, fades in when the wordmark shrinks */
+  .demo .term{border:1px solid transparent;border-radius:12px;background:transparent;
+    transition:border-color .81s var(--ease),background .81s var(--ease),box-shadow .81s var(--ease)}
+  .demo .term.on{border-color:var(--line);background:#0f0f12;box-shadow:0 24px 60px -20px rgba(0,0,0,.8)}
+  .demo .bar{display:flex;align-items:center;gap:7px;padding:10px 14px;border-bottom:1px solid transparent;
+    color:var(--mut);font-size:12px;letter-spacing:.03em;opacity:0;transition:opacity .81s var(--ease),border-color .81s var(--ease)}
+  .demo .term.on .bar{opacity:1;border-color:var(--line)}
+  .demo .bar i{width:10px;height:10px;border-radius:50%;background:#2c2c31;flex:none}
+  .demo .bar span{flex:1;text-align:center;margin-right:51px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  .demo .screen{padding:14px 16px 16px;min-height:0;transition:min-height .81s var(--ease),opacity .225s ease;
+    font-size:clamp(11.5px,1.55vw,14px);line-height:1.7;color:var(--soft)}
+  .demo .term.on .screen{min-height:clamp(380px,52svh,440px)}
+  .demo .screen.fade{opacity:0}
+
+  /* prompt line: plain inline flow, so it wraps like a real terminal (cursor follows the last char) */
+  .demo .dprompt{--fs:clamp(84px,17vw,200px);min-height:calc(var(--fs) * 1.15);
+    transition:min-height .81s var(--ease);overflow-wrap:anywhere}
+  .demo .dprompt.dsmall{--fs:clamp(14px,2.4vw,22px)}
+  .demo .ps,.demo .head,.demo .args,.demo .cursor{font-size:var(--fs);transition:font-size .81s var(--ease),opacity .135s ease}
+  .demo .ps{display:none;color:var(--ok);font-family:var(--mono)}
+  .demo .head{font-family:var(--sans);font-weight:800;letter-spacing:-.025em;line-height:1.2;color:var(--fg)}
+  .demo .head b{color:var(--accent);font-weight:inherit}
+  .demo .dprompt.mono .ps{display:inline}
+  .demo .dprompt.mono .head{font-family:var(--mono);font-weight:500;letter-spacing:0}
+  .demo .dprompt.dip .head,.demo .dprompt.dip .cursor{opacity:0}
+  .demo .args{font-family:var(--mono);color:var(--soft);white-space:pre-wrap;line-height:1.2}
+  .demo .args:not(:empty)::before{content:" "}
+  .demo .args .q{color:var(--accent)}
+  .demo .cursor{display:inline-block;width:.55em;height:.085em;margin-left:.08em;background:var(--accent);
+    transform:translateY(.09em);animation:blink 0.954s steps(1) infinite}
+  .demo .typing .cursor{animation:none}
+  @keyframes blink{50%{opacity:0}}
+
+  .demo .out{margin-top:14px}
+  .demo .ln{opacity:0;transform:translateY(4px);transition:opacity .252s ease,transform .252s ease;white-space:pre-wrap;word-break:break-word}
+  .demo .ln.in{opacity:1;transform:none}
+  .demo .out.gone .ln{opacity:0;transition:opacity .135s ease}
+  .demo .a{color:var(--accent)} .demo .m{color:var(--mut)} .demo .w{color:var(--fg)} .demo .g{color:var(--ok)}
+  .demo .gap{display:block;height:.55em}
+
+  /* agent TUIs */
+  .demo .agent{display:none}
+  .demo .agent.on{display:block}
+  .demo .sh.off{display:none}
+  .demo .tbox{border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:2px 0 12px}
+  .demo .log{min-height:1em}
+  .demo .log .ln{padding-left:2ch;text-indent:-2ch}   /* hanging indent when a line wraps */
+  .demo .bcur{display:inline-block;width:.6em;height:1.15em;vertical-align:-.2em;background:var(--soft);margin-left:1px}
+  .demo .bcur.blink{animation:blink 0.954s steps(1) infinite}
+
+  /* Claude Code look: orange welcome box, ● tool bullets, ⎿ results, rounded input box */
+  .demo .cc .welcome{border-color:var(--claude)}
+  .demo .cc .o{color:var(--claude)}
+  .demo .cc .input{border-color:#4a4a50;margin:14px 0 2px}
+  .demo .cc .dot-ok{color:#4eba65}
+  .demo .cc .user{color:var(--mut)}
+  .demo .cc .user b{font-weight:400;color:var(--soft)}
+
+  /* Codex CLI look: >_ header, › user turns on a raised band, • Called / └ results, cyan accents */
+  .demo .cx .head2 b{color:var(--fg)}
+  .demo .cx .c{color:var(--cdx)}
+  .demo .cx .user{background:#1b1b20;margin:0 -16px;padding:2px 16px}
+  .demo .cx .input{background:#1b1b20;margin:14px -16px 2px;padding:6px 16px}
+  .demo .cx .bold{color:var(--fg);font-weight:600}
+  .demo .shimmer{animation:shim 1.08s ease-in-out infinite}
+  @keyframes shim{50%{opacity:.45}}
+
+
+  @media (max-width:520px){ .demo .screen{padding:12px 12px 14px} .demo .cx .user,.demo .cx .input{margin-left:-12px;margin-right:-12px;padding-left:12px;padding-right:12px} }
+  @media (prefers-reduced-motion:reduce){.demo .cursor,.demo .bcur.blink,.demo .shimmer{animation:none}.demo .ln{transition:none}}
 </style>
 </head>
 <body>
@@ -122,8 +203,8 @@
     </a>
     <nav class="nav-links">
       <a class="hide-sm" href="#what">What</a>
-      <a class="hide-sm" href="#agents">Agents</a>
-      <a href="#install">Install</a>
+      <a class="hide-sm" href="#agent-ready">Agent ready</a>
+      <a href="#hero-cmd">Install</a>
       <a class="repo" href="https://github.com/kerbart/ctxq">GitHub ↗</a>
     </nav>
   </div>
@@ -132,8 +213,21 @@
 <section class="hero">
   <div class="wrap">
     <p class="eyebrow">local first <span class="accent">·</span> agent first <span class="accent">·</span> one binary</p>
-    <h1 class="wordmark" aria-label="ctxq"><span aria-hidden="true"><span style="--i:0">c</span><span style="--i:1">t</span><span style="--i:2">x</span><span style="--i:3">q</span></span></h1>
+    <h1 class="sr-only">ctxq — a local knowledge index for AI agents</h1>
+    <div class="demo" aria-hidden="true">
+      <div class="term" id="d-term">
+        <div class="bar"><i></i><i></i><i></i><span id="d-title">zsh — ~/work/acme</span></div>
+        <div class="screen" id="d-screen">
+          <div class="sh" id="d-sh">
+            <div class="dprompt" id="d-prompt"><span class="ps">❯ </span><span class="head">ctx<b>q</b></span><span class="args" id="d-args"></span><span class="cursor" id="d-cur"></span></div>
+            <div class="out" id="d-out"></div>
+          </div>
+          <div class="agent" id="d-agent"></div>
+        </div>
+      </div>
+    </div>
     <p class="tagline">ask the index, get the line</p>
+    <p class="small mut" style="margin:10px 0 0">No more grep loops eating your context. One MCP call, one sourced passage.</p>
     <p class="lede">
       Your agent shouldn't dig through folders. ctxq <strong>indexes</strong>
       your docs, live inventories and code <em>for it</em> and serves back
@@ -150,11 +244,10 @@
     </div>
     <p class="hero-note" id="hero-note">Linux x86_64 static musl · SHA-256 verified · no root · <code>ctxq</code> is on your PATH when the line returns</p>
 
-    <img class="hero-art" src="/hero.webp?v=2" alt="ctxq: documents and code woven into one index" width="1595" height="720" loading="eager" onerror="this.remove()">
 
     <div class="cta-row">
-      <a class="btn" href="#quickstart"><span class="accent">▍</span>&nbsp;quick start</a>
-      <a class="btn" href="#install">install notes&nbsp;→</a>
+      <a class="btn" href="#agent-ready"><span class="accent">▍</span>&nbsp;agent ready</a>
+      <a class="btn" href="https://github.com/kerbart/ctxq#readme">docs&nbsp;→</a>
     </div>
   </div>
 </section>
@@ -162,74 +255,45 @@
 <section id="what">
   <div class="wrap">
     <div class="sec-head">
-      <p class="eyebrow">What it does</p>
-      <h2>Three engines, one index, one process</h2>
-      <p class="mut">The index is a single SQLite file next to your workspace. Everything runs on your machine; the embedding server is the only thing you may choose to make remote.</p>
+      <p class="eyebrow">What it indexes</p>
+      <h2>One index for the whole workspace</h2>
+      <p class="mut">One SQLite file next to your project. Everything runs on your machine.</p>
     </div>
     <div class="grid">
-      <div class="card">
-        <h3><span class="n">01</span>Lexical first, dense when you plug a model</h3>
-        <p>A global BM25 with identifier-aware weighting is always on. Offline, that is the search. Plug Ollama or an OpenAI-compatible server and cosine joins it. A port, a container, a domain is a BM25 hit either way.</p>
-      </div>
-      <div class="card">
-        <h3><span class="n">02</span>Live inventories</h3>
-        <p>Built-in collectors for Docker, systemd, listening ports, projects and scripts — or any command's markdown output. Tables are indexed row by row: “which port does X use?” gets the row, not a page.</p>
-      </div>
-      <div class="card">
-        <h3><span class="n">03</span>Code graph</h3>
-        <p>A built-in extractor for Rust, TS/JS, Python, Go, Java, Kotlin and C#: symbols, callers and callees, bodies on demand, change impact of a diff, doc ↔ code links.</p>
-      </div>
-      <div class="card">
-        <h3><span class="n">04</span>Office &amp; PDF, natively</h3>
-        <p><code>.docx</code>, <code>.pptx</code> with speaker notes, <code>.xlsx</code>, <code>.pdf</code> are converted to markdown in-process and chunked like any other document. No Python, no external service.</p>
-      </div>
-      <div class="card">
-        <h3><span class="n">05</span>Secrets stay out</h3>
-        <p>Every file is scanned before chunking and embedding. A file holding a key is quarantined — never indexed, never served — and listed by <code>status</code>.</p>
-      </div>
-      <div class="card">
-        <h3><span class="n">06</span>Pluggable stores</h3>
-        <p>Local by default. Attach to Qdrant, federate other read-only stores or another ctxq instance, weight and merge their results.</p>
-      </div>
+      <div class="card"><h3><span class="n">01</span>Docs</h3><p>Markdown, Word, PowerPoint with speaker notes, Excel and PDF. Converted in-process, cut by heading.</p></div>
+      <div class="card"><h3><span class="n">02</span>Live inventories</h3><p>Docker, systemd, listening ports, projects, scripts. One row per chunk: “which port?” gets the row.</p></div>
+      <div class="card"><h3><span class="n">03</span>Code graph</h3><p>Rust, TS/JS, Python, Go, Java, Kotlin, C#. Symbols, callers, callees, impact of a diff.</p></div>
+      <div class="card"><h3><span class="n">04</span>Offline first</h3><p>BM25 is always on. Plug Ollama or any OpenAI-compatible server for hybrid search.</p></div>
+      <div class="card"><h3><span class="n">05</span>Secrets stay out</h3><p>A file holding a key is quarantined: never indexed, never served.</p></div>
+      <div class="card"><h3><span class="n">06</span>Always sourced</h3><p>Every passage comes back with its file and line range.</p></div>
     </div>
   </div>
 </section>
 
-<section id="how">
+<section id="agent-ready">
   <div class="wrap">
     <div class="sec-head">
-      <p class="eyebrow">How it fits</p>
-      <h2>Sources → chunks → lexical + dense → fused, capped, sourced</h2>
+      <p class="eyebrow">Agent ready</p>
+      <h2>Paste this into your agent</h2>
+      <p class="mut">Claude Code, Codex, Copilot CLI. It installs ctxq, indexes the project and registers the MCP server.</p>
     </div>
-<pre class="flow">files md/office/pdf   ─► sections by heading ─┐
-inventories (live)    ─► one row = one chunk   ├─► <b>BM25 global</b> (always local) ──┐
-command output        ─► markdown              │                                  ├─► <b>fusion α</b> ─► caps ─► MCP / daemon / CLI
-code                  ─► symbols + call graph  ┘   <b>vectors</b> ─► local | qdrant | peer ┘</pre>
-    <div class="grid" style="margin-top:22px">
-      <div class="card">
-        <h3>Documents</h3>
-        <p>Markdown, Word, PowerPoint (speaker notes included), Excel and PDF are converted to markdown in-process, then cut by <b>H2/H3 headings</b>. Each chunk keeps its <b>breadcrumb</b> (document &gt; section), so the path and the title are searchable too. Tables and inventories are indexed <b>one row per chunk</b>. A file whose hash and mtime are unchanged is never re-read: sync is incremental.</p>
-      </div>
-      <div class="card">
-        <h3>Code</h3>
-        <p>A generic lexer, tuned per language by a small table, feeds a <b>scope tree</b> and per-language declaration recognizers. No full AST: just what navigation needs. Output: <b>symbols</b> with their qualified name and body, <b>calls</b> resolved through imports, doc comments attached to the symbol that follows, and <b>doc ↔ code links</b>.</p>
-      </div>
-      <div class="card">
-        <h3>Ranking</h3>
-        <p>A global BM25 (k1 1.5, b 0.75) plus dense cosine: <code>cosine + α · bm25 / bm25<sub>max</sub></code>. Identifiers get a higher α. With the built-in hash embedder, α is raised so BM25 leads — the hash is a weak rerank, not a neural model. Results are capped and always carry their source and line range.</p>
-      </div>
+    <div class="code paste">
+      <pre>Set up ctxq (https://ctxq.dev) for this project. Follow these steps exactly; do not invent flags or URLs.
+Rules: no sudo, do not edit project files yourself, stop and quote the exact error if a step fails.
+
+1. If an MCP server named &quot;ctxq&quot; is already available, call its status tool, report the result, and stop.
+2. If you are Codex: your sandbox blocks the ctxq binary, so do not run it. Ask me to run this in a normal terminal from this project&#x27;s root, then to restart Codex:
+   curl -fsSL https://ctxq.dev/install.sh | sh &amp;&amp; . &quot;$HOME/.ctxq/env&quot; &amp;&amp; ctxq setup
+3. Otherwise, if ctxq is not on PATH, install it (checksum-verified, no root):
+   curl -fsSL https://ctxq.dev/install.sh | sh
+4. From this project&#x27;s root (never from $HOME), run:
+   . &quot;$HOME/.ctxq/env&quot; &amp;&amp; ctxq setup
+   It indexes the project, registers the &quot;ctxq&quot; MCP server in every agent CLI it finds, and adds AGENTS.md, CLAUDE.md, .mcp.json and .codex/ (expected). Do not start &quot;ctxq mcp&quot; yourself.
+5. Run: . &quot;$HOME/.ctxq/env&quot; &amp;&amp; ctxq status
+   Report the indexed counts and any quarantined files, then tell me to restart this agent and approve the ctxq server if asked.</pre>
+      <button class="copy" aria-label="Copy prompt"></button>
     </div>
-    <h3 style="margin-top:30px">Measured, not guessed</h3>
-    <p class="small mut">A 100-question golden set, drawn from a real private workspace and kept out of the repository, is the number below. A smaller public set over ctxq's own docs ships in <code>eval/public/</code> and runs in CI. Mix of exact-identifier and natural-language questions, scored by MRR with a bootstrap confidence interval.</p>
-    <table>
-      <thead><tr><th>Configuration</th><th>MRR</th><th>hit @1</th><th>hit @5</th><th>missed</th></tr></thead>
-      <tbody>
-        <tr><td>Hybrid, embedding server (qwen3-embedding 0.6b), tuned prompt template</td><td><b>0.795</b> <span class="mut">[0.739–0.848]</span></td><td>71 %</td><td>92 %</td><td>8 / 100</td></tr>
-        <tr><td>Same, generic prompt template</td><td>0.754</td><td>67 %</td><td>88 %</td><td>12 / 100</td></tr>
-        <tr><td>Built-in hash embedder, fully offline (128-d) — BM25 leads</td><td>≈ 0.51</td><td colspan="3" class="mut">no model server; identifiers still hit via BM25</td></tr>
-      </tbody>
-    </table>
-    <p class="small mut" style="margin-top:14px">Hybrid score fusion beat reciprocal rank fusion on that set. A resident daemon answers a known question in about 20 ms.</p>
+    <p class="small mut" style="margin-top:10px">Codex's sandbox blocks the binary: it hands you the one line to run, then you restart it.</p>
   </div>
 </section>
 
@@ -237,114 +301,23 @@ code                  ─► symbols + call graph  ┘   <b>vectors</b> ─► l
   <div class="wrap">
     <div class="sec-head">
       <p class="eyebrow">Agent surface</p>
-      <h2>Designed for the model reading it</h2>
-      <p class="mut">Stable result schema, bounded output everywhere, one MCP server named <code>ctxq</code>. The same operations exist on the CLI and on the daemon's HTTP API.</p>
+      <h2>One MCP server, bounded and sourced</h2>
     </div>
     <table>
-      <thead><tr><th>MCP tool</th><th>Use it for</th></tr></thead>
       <tbody>
-        <tr><td><code>inventory(kind, filter)</code></td><td>Exact rows — which port, which container, which domain — no vector search involved.</td></tr>
-        <tr><td><code>search(query, tags, source_types, since, path_prefixes, max_chars)</code></td><td>Ranked passages with metadata and source lines.</td></tr>
-        <tr><td><code>context(query, scope, max_tokens, page)</code></td><td>Docs and code together, paged within a token budget.</td></tr>
-        <tr><td><code>map(prefix, depth)</code></td><td>One-line summary per document: read the map, open only what you need.</td></tr>
-        <tr><td><code>annotate(path, summary, tags)</code></td><td>Leave what you learned for the next agent; visible immediately.</td></tr>
-        <tr><td><code>status()</code></td><td>Freshness per source, store, quarantined and lost files.</td></tr>
-        <tr><td><code>code_symbol(name)</code></td><td>Signature, doc comment and body of a symbol.</td></tr>
-        <tr><td><code>code_callers</code> · <code>code_callees(name, depth)</code></td><td>Who calls it, what it calls — multi-hop.</td></tr>
-        <tr><td><code>code_path(from, to)</code></td><td>Shortest call chain between two symbols.</td></tr>
-        <tr><td><code>code_impact(diff | base, head)</code></td><td>Changed symbols → transitive callers → the docs that mention them.</td></tr>
+        <tr><td><code>search</code></td><td>Ranked passages with source lines</td></tr>
+        <tr><td><code>inventory</code></td><td>The exact row: port, container, domain</td></tr>
+        <tr><td><code>context</code></td><td>Docs and code together, within a token budget</td></tr>
+        <tr><td><code>map</code></td><td>One line per document</td></tr>
+        <tr><td><code>annotate</code></td><td>Notes for the next agent</td></tr>
+        <tr><td><code>status</code></td><td>Freshness, quarantined files</td></tr>
+        <tr><td><code>code_symbol</code></td><td>Signature, doc, body</td></tr>
+        <tr><td><code>code_callers</code> · <code>code_callees</code></td><td>Who calls it, what it calls</td></tr>
+        <tr><td><code>code_path</code></td><td>Shortest call chain</td></tr>
+        <tr><td><code>code_impact</code></td><td>Diff → callers → docs</td></tr>
       </tbody>
     </table>
-  </div>
-</section>
-
-<section id="quickstart">
-  <div class="wrap">
-    <div class="sec-head">
-      <p class="eyebrow">Quick start</p>
-      <h2>Two commands</h2>
-    </div>
-    <ol class="steps">
-      <li>
-        <h3>Set up a workspace</h3>
-        <div class="code" data-copy="ctxq setup">
-          <pre><span class="prompt">$ </span>ctxq setup   <span class="cmt"># from a project — indexes, then registers MCP</span></pre>
-          <button class="copy" aria-label="Copy command"></button>
-        </div>
-        <p class="small mut" style="margin-top:8px">Claude Code, Codex, Cursor, VS Code, Zed, Windsurf… detected and configured. Codex is picked up when <code>~/.codex/</code> exists — restart it, then <code>/mcp</code>. Do not run <code>ctxq</code> in the Codex shell (the sandbox blocks it); the MCP tools are the path that works. You never start the MCP server yourself — the editor runs <code>ctxq mcp</code> in the background.</p>
-      </li>
-      <li>
-        <h3>Ask it yourself</h3>
-        <div class="code" data-copy='ctxq search "how do I deploy the api?"'>
-          <pre><span class="prompt">$ </span>ctxq search "how do I deploy the api?"
-<span class="prompt">$ </span>ctxq search "retention policy" --tag legal --type pdf --json</pre>
-          <button class="copy" aria-label="Copy command"></button>
-        </div>
-        <p class="small mut" style="margin-top:8px">The first search starts a daemon that keeps the index warm and re-syncs docs every 60s (inventories every 5 min). Offline, BM25 leads. For neural semantic search, point it at an embedding server below.</p>
-      </li>
-    </ol>
-  </div>
-</section>
-
-<section id="config">
-  <div class="wrap">
-    <div class="sec-head">
-      <p class="eyebrow">Configuration</p>
-      <h2>One <code>ctxq.toml</code>, nothing machine-specific in the code</h2>
-    </div>
-    <p class="mut">Put a <code>ctxq.toml</code> at the root of the workspace (or point <code>$CTXQ_CONFIG</code> at one). With no file at all, ctxq works offline: BM25 plus a hash embedder. For neural semantic search, pick one of the two:</p>
-    <h3>A local or LAN server — no credentials</h3>
-    <div class="code" data-copy='[embed]
-backend = "ollama"
-urls = ["http://gpu-box:11434", "http://localhost:11434"]
-model = "qwen3-embedding:0.6b"'>
-      <pre><span class="k">[embed]</span>
-backend = "ollama"
-urls = ["http://gpu-box:11434", "http://localhost:11434"]   <span class="cmt"># tried in order</span>
-model = "qwen3-embedding:0.6b"</pre>
-      <button class="copy" aria-label="Copy configuration"></button>
-    </div>
-    <h3>An API with a key — OpenAI or any compatible server</h3>
-    <div class="code" data-copy='[embed]
-backend = "openai"
-urls = ["https://api.openai.com"]
-model = "text-embedding-3-small"
-api_key_env = "OPENAI_API_KEY"'>
-      <pre><span class="k">[embed]</span>
-backend = "openai"                    <span class="cmt"># also LM Studio, vLLM, TEI, llama.cpp…</span>
-urls = ["https://api.openai.com"]
-model = "text-embedding-3-small"
-api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable, not the key</span></pre>
-      <button class="copy" aria-label="Copy configuration"></button>
-    </div>
-    <div class="code" data-copy='export OPENAI_API_KEY="sk-..."'>
-      <pre><span class="prompt">$ </span>export OPENAI_API_KEY="sk-..."      <span class="cmt"># in your shell profile or your secret manager</span></pre>
-      <button class="copy" aria-label="Copy command"></button>
-    </div>
-    <p class="small mut" style="margin-top:12px"><strong>The key never goes in the file.</strong> <code>ctxq.toml</code> can be committed and shared; the key stays in your environment. It is sent as <code>Authorization: Bearer</code> to the embedding server only. Same pattern for Qdrant and federated peers (<code>api_key_env</code>) and the daemon's HTTP API (<code>http_token_env</code>). Remote embedding is never implicit and always bounded (<code>concurrency</code>, <code>batch</code>). <code>CTXQ_*</code> variables override the file, <code>--embeddings</code> overrides both; every key is documented in <a href="https://github.com/kerbart/ctxq/blob/main/ctxq.example.toml">ctxq.example.toml</a>.</p>
-  </div>
-</section>
-
-<section id="install">
-  <div class="wrap">
-    <div class="sec-head">
-      <p class="eyebrow">Install</p>
-      <h2>Prebuilt binaries, checksum-verified</h2>
-      <p class="mut">One line installs a verified binary and puts <code>ctxq</code> on your PATH. No compiler, no root, no cargo fallback.</p>
-    </div>
-    <h3>Linux &amp; macOS</h3>
-    <div class="code" data-copy="curl -fsSL https://ctxq.dev/install.sh | sh && . &quot;$HOME/.ctxq/env&quot;">
-      <pre><span class="prompt">$ </span>curl -fsSL https://ctxq.dev/install.sh | sh &amp;&amp; . "$HOME/.ctxq/env"</pre>
-      <button class="copy" aria-label="Copy command"></button>
-    </div>
-    <p class="small mut" style="margin-top:12px">Copy the whole line. <code>. ~/.ctxq/env</code> is what puts <code>ctxq</code> on <em>this</em> shell's PATH — a pipe cannot export to its parent. The installer also writes that source into your shell rc, so new terminals just work. Then, from a <em>project</em> directory: <code>ctxq setup</code>. Windows: use WSL. Binaries come from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a>. Linux x86_64 is musl-static. This site mirrors the current build at <a href="/releases/SHA256SUMS">/releases</a>.</p>
-    <h3 style="margin-top:22px">From source</h3>
-    <p class="small mut">Source of truth: <a href="https://github.com/kerbart/ctxq">github.com/kerbart/ctxq</a>.</p>
-    <div class="code" data-copy="cargo install --git https://github.com/kerbart/ctxq.git --locked">
-      <pre><span class="prompt">$ </span>cargo install --git https://github.com/kerbart/ctxq.git --locked</pre>
-      <button class="copy" aria-label="Copy command"></button>
-    </div>
-    <p class="small mut" style="margin-top:14px">Override the destination with <code>CTXQ_BINDIR</code>. Archives: <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a>.</p>
+    <p class="small mut" style="margin-top:18px"><b style="color:var(--fg)">MRR 0.795</b> · 71 % hit@1 · 92 % hit@5 on a 100-question private set (hybrid, qwen3-embedding 0.6b). Method, configuration and everything else: <a href="https://github.com/kerbart/ctxq#readme">README</a>.</p>
   </div>
 </section>
 
@@ -400,6 +373,234 @@ api_key_env = "OPENAI_API_KEY"        <span class="cmt"># the NAME of a variable
     .then(r => r.ok ? r.json() : null)
     .then(j => { if (j && j.tag_name) { document.getElementById('ver').textContent = j.tag_name; document.getElementById('ver-foot').textContent = j.tag_name; } })
     .catch(() => {});
+</script>
+<script>
+(() => {
+/* Illustrative output: same shape as the real CLI (source:lines, score, breadcrumb),
+   with sample data. */
+const S = [
+  { cmd: '', out: [], hold: 350 },
+  { cmd: 'setup', index: true,
+    out: [
+      '<span class="g">✓</span> claude code  <span class="m">registered</span>',
+      '<span class="g">✓</span> codex        <span class="m">registered</span>',
+      '<span class="g">✓</span> copilot      <span class="m">registered</span>',
+      '<span class="g">✓</span> gemini       <span class="m">registered</span>',
+      '<span class="gap"></span>',
+      '<span class="m">restart your CLIs once — that is all.</span>'
+    ], hold: 1700 },
+  { cmd: 'status',
+    out: [
+      '<span class="m">workspace</span>    ~/work/acme',
+      '<span class="m">documents</span>    1 771 files · 12 898 chunks',
+      '<span class="m">embedder</span>     qwen3-embedding:0.6b <span class="m">(ollama)</span>',
+      '<span class="m">code graph</span>   7 languages · 4 212 symbols',
+      '<span class="m">inventories</span>  docker · systemd · ports',
+      '<span class="m">secrets</span>      2 files quarantined, never indexed',
+      '<span class="m">freshness</span>    synced just now  <span class="g">✓</span>'
+    ], hold: 1880 },
+  { cmd: 'search "how do I deploy the api?"',
+    out: [
+      '<span class="a">0.84</span>  <span class="w">docs/deploy.md</span><span class="m">:12-31</span>   <span class="m">Deploy › API › Docker</span>',
+      '      `docker compose up -d api`, then /healthz',
+      '<span class="gap"></span>',
+      '<span class="a">0.79</span>  <span class="w">infra/ports.md</span><span class="m">:44-47</span>   <span class="m">Ports › api</span>',
+      '      api → 127.0.0.1:3042 (tunnel api.example.dev)',
+      '<span class="gap"></span>',
+      '<span class="a">0.71</span>  <span class="w">scripts/release.sh</span><span class="m">:1-18</span>   <span class="m">release script</span>',
+      '<span class="gap"></span>',
+      '<span class="m">3 sourced passages · 12 ms · offline</span>'
+    ], hold: 2240 },
+  { cmd: 'explore refund',
+    out: [
+      '<span class="a">fn</span> <span class="w">refund</span>(order_id, amount) → Result   <span class="m">src/billing/refund.rs:42</span>',
+      '<span class="gap"></span>',
+      '<span class="m">callers</span>   checkout::cancel   <span class="m">src/checkout.rs:118</span>',
+      '          admin::reverse     <span class="m">src/admin.rs:77</span>',
+      '<span class="m">callees</span>   ledger::post · notify::send',
+      '<span class="gap"></span>',
+      '<span class="m">linked docs</span>   docs/billing.md:60-88'
+    ], hold: 2060 },
+  { agent: 'claude', q: 'how do I deploy the api?',
+    tool: [
+      '<span class="dot-ok">●</span> <span class="w">ctxq - search</span> <span class="m">(MCP)</span>(query: "how do I deploy the api?")',
+      '  <span class="m">⎿  3 passages · docs/deploy.md:12-31 · infra/ports.md:44-47</span>'
+    ],
+    answer: [
+      '<span class="w">●</span> Run <span class="o">docker compose up -d api</span>, then check <span class="o">/healthz</span>.',
+      '  <span class="m">source: docs/deploy.md:12-31</span>'
+    ], hold: 2780 },
+  { agent: 'codex', q: 'who calls refund()?',
+    tool: [
+      '<span class="m">•</span> <span class="bold">Called</span> <span class="c">ctxq.explore</span>({"symbol":"refund"})',
+      '  <span class="m">└ callers: checkout::cancel, admin::reverse</span>'
+    ],
+    answer: [
+      '<span class="w">•</span> Two callers: <span class="c">checkout::cancel</span> <span class="m">(src/checkout.rs:118)</span>',
+      '  and <span class="c">admin::reverse</span> <span class="m">(src/admin.rs:77)</span>.'
+    ], hold: 2780 }
+];
+
+const AGENT = {
+  claude: {
+    title: 'claude — ~/work/acme',
+    html: '<div class="cc">' +
+      '<div class="tbox welcome"><span class="o">✻</span> Welcome to <span class="w">Claude Code</span>!<br><span class="m">  cwd: ~/work/acme</span></div>' +
+      '<div class="log"></div>' +
+      '<div class="tbox input"><span class="m">&gt;</span> <span class="inp"></span><span class="bcur blink"></span></div>' +
+      '<div class="m">  ? for shortcuts</div></div>',
+    user: q => '<span class="user">&gt; <b>' + q + '</b></span>',
+    spin: '<span class="o spin">✻</span> <span class="o">Pondering…</span> <span class="m">(esc to interrupt)</span>'
+  },
+  codex: {
+    title: 'codex — ~/work/acme',
+    html: '<div class="cx">' +
+      '<div class="tbox head2"><b>&gt;_ OpenAI Codex</b><br><span class="m">directory: ~/work/acme</span></div>' +
+      '<div class="log"></div>' +
+      '<div class="input"><span class="bold">›</span> <span class="inp"></span><span class="bcur blink"></span></div>' +
+      '<div class="m">  ⏎ send   ⌃J newline   ⌃C quit</div></div>',
+    user: q => '<div class="user"><span class="bold">›</span> ' + q + '</div>',
+    spin: '<span class="shimmer"><span class="m">•</span> <span class="bold">Working</span> <span class="m">(2s • esc to interrupt)</span></span>'
+  }
+};
+
+const $ = id => document.getElementById(id);
+const $args = $('d-args'), $out = $('d-out'), $prompt = $('d-prompt'), $term = $('d-term'),
+      $screen = $('d-screen'), $sh = $('d-sh'), $agent = $('d-agent'), $title = $('d-title');
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const reduce = matchMedia('(prefers-reduced-motion:reduce)').matches;
+const esc = t => t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+
+function styled(text){            // highlight quoted strings in the typed command
+  return esc(text).replace(/("[^"]*"?)/g,'<span class="q">$1</span>');
+}
+function paint(text){ $args.innerHTML = styled(text); }
+const keyDelay = () => 34 + Math.random() * 50;
+
+async function type(text){
+  $prompt.classList.add('typing');
+  for (let i = 1; i <= text.length; i++){ paint(text.slice(0, i)); await sleep(keyDelay()); }
+  $prompt.classList.remove('typing');
+}
+async function erase(text){
+  $prompt.classList.add('typing');
+  for (let i = text.length - 1; i >= 0; i--){ paint(text.slice(0, i)); await sleep(14); }
+  $prompt.classList.remove('typing');
+}
+function line(host, html){
+  const d = document.createElement('div');
+  d.className = 'ln'; d.innerHTML = html; host.appendChild(d);
+  requestAnimationFrame(() => requestAnimationFrame(() => d.classList.add('in')));
+  return d;
+}
+async function show(lines, host){
+  for (const html of lines){
+    line(host, html);
+    await sleep(html.includes('gap') ? 40 : 170);
+  }
+}
+
+const FILES = ['README.md','docs/deploy.md','docs/billing.md','infra/ports.md','src/billing/refund.rs',
+  'src/checkout.rs','src/admin.rs','specs/api.pdf','scripts/release.sh','docker-compose.yml'];
+async function indexing(host){    // live progress: bar + file being read, then collapses into a ✓ line
+  line(host, '<span class="m">scanning</span>     ~/work/acme <span class="m">· 1 771 files</span>');
+  const d = line(host, '');
+  const W = 18, N = 30;
+  for (let i = 1; i <= N; i++){
+    const f = Math.round(1771 * i / N), c = Math.round(12898 * i / N), k = Math.round(W * i / N);
+    d.innerHTML = '<span class="a">' + '█'.repeat(k) + '</span><span class="m">' + '░'.repeat(W - k) + '</span> ' +
+      String(Math.round(100 * i / N)).padStart(3) + '%  <span class="m">' + FILES[i % FILES.length] + '</span>';
+    await sleep(55);
+  }
+  await sleep(180);
+  d.innerHTML = '<span class="g">✓</span> index        1 771 files → 12 898 chunks';
+  await sleep(250);
+}
+
+async function swap(fn){          // fade the screen, change its content, fade back
+  $screen.classList.add('fade'); await sleep(234);
+  fn();
+  $screen.classList.remove('fade'); await sleep(234);
+}
+async function toShell(){
+  if (!$sh.classList.contains('off')) return;
+  await swap(() => { $agent.className = 'agent'; $agent.innerHTML = ''; $sh.classList.remove('off'); $title.textContent = 'zsh — ~/work/acme'; });
+}
+
+async function agentScene(s){
+  const A = AGENT[s.agent];
+  await swap(() => {
+    $sh.classList.add('off'); $title.textContent = A.title;
+    $agent.innerHTML = A.html; $agent.className = 'agent on';
+  });
+  const log = $agent.querySelector('.log'), inp = $agent.querySelector('.inp'),
+        bc = $agent.querySelector('.bcur');
+  await sleep(630);
+  bc.classList.remove('blink');
+  for (let i = 1; i <= s.q.length; i++){ inp.textContent = s.q.slice(0, i); await sleep(keyDelay()); }
+  bc.classList.add('blink');
+  await sleep(342);                 // "enter"
+  inp.textContent = '';
+  line(log, A.user(esc(s.q)));
+  line(log, '<span class="gap"></span>');
+  const sp = line(log, A.spin);
+  const glyphs = '·✢✳✶✻✽', g = sp.querySelector('.spin');
+  let k = 0; const t = setInterval(() => { if (g) g.textContent = glyphs[k++ % glyphs.length]; }, 108);
+  await sleep(990);
+  clearInterval(t); sp.remove();
+  await show(s.tool, log);
+  line(log, '<span class="gap"></span>');
+  await sleep(675);
+  await show(s.answer, log);
+}
+
+async function intro(){
+  await sleep(2420);                // big wordmark + big cursor, before shrinking
+  $term.classList.add('on');
+  $prompt.classList.add('dsmall');
+  await sleep(810);
+  $prompt.classList.add('dip');     // swap to the terminal font while invisible
+  await sleep(135);
+  $prompt.classList.add('mono');
+  $prompt.classList.remove('dip');
+  await sleep(270);
+}
+
+async function run(){
+  if (reduce){                      // no animation: show one finished scene
+    $term.classList.add('on'); $prompt.classList.add('dsmall', 'mono');
+    paint(S[1].cmd);
+    S[1].out.forEach(h => { const d = line($out, h); d.classList.add('in'); });
+    return;
+  }
+  await intro();
+  for (;;){
+    for (const s of S){
+      if (s.agent){
+        await agentScene(s);
+      } else {
+        await toShell();
+        if (s.cmd){
+          await sleep(405);
+          await type(s.cmd);
+          await sleep(342);         // "enter"
+          $out.className = 'out'; $out.innerHTML = '';
+          if (s.index) await indexing($out);
+          await show(s.out, $out);
+        }
+      }
+      await sleep(s.hold);
+      if (!s.agent){
+        $out.classList.add('gone');
+        if (s.cmd) await erase(s.cmd);
+        await sleep(234);
+        $out.innerHTML = '';
+      }
+    }
+  }
+}
+run();
+})();
 </script>
 </body>
 </html>
