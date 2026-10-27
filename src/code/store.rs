@@ -62,6 +62,9 @@ CREATE TABLE IF NOT EXISTS code_meta (
 "#;
 
 const META_EXTRACTOR_VERSION: &str = "extractor_version";
+/// Present while `code_calls.callee_id` reflects the stored files; any file
+/// change drops it, `resolve_calls` sets it.
+const META_CALLS_RESOLVED: &str = "calls_resolved";
 
 /// Row of `code_files`, as needed by `sync` to decide whether a file changed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,6 +135,19 @@ impl CodeStore {
         Ok(())
     }
 
+    /// False until `resolve_calls` ran after the last file change.
+    pub fn calls_resolved(&self) -> Result<bool> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT 1 FROM code_meta WHERE key = ?1",
+                params![META_CALLS_RESOLVED],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
     /// Stored metadata for `path`, if it is currently indexed.
     pub fn file_meta(&self, path: &str) -> Result<Option<FileMeta>> {
         self.conn
@@ -183,6 +199,10 @@ impl CodeStore {
         outline: &FileOutline,
     ) -> Result<()> {
         let tx = self.conn.transaction()?;
+        tx.execute(
+            "DELETE FROM code_meta WHERE key = ?1",
+            params![META_CALLS_RESOLVED],
+        )?;
         tx.execute(
             "UPDATE code_calls SET callee_id = NULL
              WHERE callee_id IN (SELECT id FROM code_symbols WHERE path = ?1)",
@@ -255,6 +275,10 @@ impl CodeStore {
     pub fn remove_file(&mut self, path: &str) -> Result<()> {
         let tx = self.conn.transaction()?;
         tx.execute(
+            "DELETE FROM code_meta WHERE key = ?1",
+            params![META_CALLS_RESOLVED],
+        )?;
+        tx.execute(
             "UPDATE code_calls SET callee_id = NULL
              WHERE callee_id IN (SELECT id FROM code_symbols WHERE path = ?1)",
             params![path],
@@ -300,6 +324,8 @@ impl CodeStore {
             }
         }
         let known_paths: Vec<String> = by_path.keys().cloned().collect();
+        let known = KnownPaths::new(&known_paths);
+        let global = TierIndex::new(all.iter());
 
         let mut imports_by_path: HashMap<String, Vec<String>> = HashMap::new();
         {
@@ -312,10 +338,11 @@ impl CodeStore {
             }
         }
         let mut resolved_imports: HashMap<String, Vec<String>> = HashMap::new();
+        let mut by_target: HashMap<String, Vec<String>> = HashMap::new();
         for (path, targets) in &imports_by_path {
             let mut candidates = Vec::new();
             for t in targets {
-                candidates.extend(candidate_paths_for_import(&known_paths, path, t));
+                candidates.extend(candidate_paths_for_import(&known, &mut by_target, path, t));
             }
             candidates.sort();
             candidates.dedup();
@@ -328,6 +355,7 @@ impl CodeStore {
             callee: String,
         }
         let mut calls: Vec<CallRow> = Vec::new();
+        // Grouped by caller file: the file / imports tiers are indexed once per group.
         {
             let mut stmt = self
                 .conn
@@ -349,37 +377,121 @@ impl CodeStore {
             }
         }
 
+        calls.sort_by(|a, b| a.caller_path.cmp(&b.caller_path));
         let empty: Vec<SymRef> = Vec::new();
+        let mut dir_tiers: HashMap<String, TierIndex> = HashMap::new();
+        // (caller, own symbols, imported symbols built on first need)
+        let mut file_tiers: Option<(&str, TierIndex, Option<TierIndex>)> = None;
         let tx = self.conn.transaction()?;
         tx.execute("UPDATE code_calls SET callee_id = NULL", [])?;
         {
             let mut update = tx.prepare("UPDATE code_calls SET callee_id = ?2 WHERE id = ?1")?;
             for call in &calls {
                 let (qualified, terminal) = callee_candidates(&call.callee);
-                let dir = parent_dir(&call.caller_path);
-
-                let tier1 = by_path.get(&call.caller_path).unwrap_or(&empty);
-                let tier2: Vec<&SymRef> = resolved_imports
-                    .get(&call.caller_path)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|p| by_path.get(p))
-                    .flatten()
-                    .collect();
-                let tier3 = by_dir.get(&dir).unwrap_or(&empty);
-
-                let resolved = match_tier(tier1.iter(), &qualified, &terminal)
-                    .or_else(|| match_tier(tier2.iter().copied(), &qualified, &terminal))
-                    .or_else(|| match_tier(tier3.iter(), &qualified, &terminal))
-                    .or_else(|| match_tier(all.iter(), &qualified, &terminal));
+                let caller = call.caller_path.as_str();
+                if file_tiers.as_ref().map(|t| t.0) != Some(caller) {
+                    let own = TierIndex::new(by_path.get(caller).unwrap_or(&empty).iter());
+                    file_tiers = Some((caller, own, None));
+                }
+                let (_, tier1, tier2) = file_tiers.as_mut().expect("set above");
+                let mut resolved = tier1.matches(&qualified, &terminal);
+                if resolved.is_none() {
+                    let tier2 = tier2.get_or_insert_with(|| {
+                        let imported = resolved_imports
+                            .get(caller)
+                            .map(Vec::as_slice)
+                            .unwrap_or(&[]);
+                        // A bare module name matched by file stem across a multi-repo
+                        // tree (`index`, `utils`) points at hundreds of files: that
+                        // tier is ambiguous anyway, widen instead of indexing it.
+                        let imported = if imported.len() > MAX_IMPORTED_FILES {
+                            &[]
+                        } else {
+                            imported
+                        };
+                        TierIndex::new(imported.iter().filter_map(|p| by_path.get(p)).flatten())
+                    });
+                    resolved = tier2.matches(&qualified, &terminal);
+                }
+                if resolved.is_none() {
+                    let tier3 = dir_tiers.entry(parent_dir(caller)).or_insert_with_key(|d| {
+                        TierIndex::new(by_dir.get(d).unwrap_or(&empty).iter())
+                    });
+                    resolved = tier3.matches(&qualified, &terminal);
+                }
+                let resolved = resolved.or_else(|| global.matches(&qualified, &terminal));
 
                 if let Some(Some(id)) = resolved {
                     update.execute(params![call.id, id])?;
                 }
             }
         }
+        tx.execute(
+            "INSERT OR REPLACE INTO code_meta (key, value) VALUES (?1, '1')",
+            params![META_CALLS_RESOLVED],
+        )?;
         tx.commit()?;
         Ok(())
+    }
+}
+
+/// Past this many resolved files, the imports tier is skipped (see `resolve_calls`).
+const MAX_IMPORTED_FILES: usize = 64;
+
+/// One resolution tier, indexed by name: scanning the tier's symbols for every
+/// call is quadratic on a home-sized tree (millions of symbols and calls).
+struct TierIndex<'a> {
+    by_qname: HashMap<&'a str, Vec<i64>>,
+    by_name: HashMap<&'a str, Vec<i64>>,
+}
+
+impl<'a> TierIndex<'a> {
+    fn new(symbols: impl Iterator<Item = &'a SymRef>) -> Self {
+        let mut by_qname: HashMap<&str, Vec<i64>> = HashMap::new();
+        let mut by_name: HashMap<&str, Vec<i64>> = HashMap::new();
+        for s in symbols {
+            by_qname.entry(s.qname.as_str()).or_default().push(s.id);
+            by_name.entry(s.name.as_str()).or_default().push(s.id);
+        }
+        Self { by_qname, by_name }
+    }
+
+    /// `Some(Some(id))`: resolved. `Some(None)`: ambiguous within this tier, stop
+    /// (do not widen). `None`: no match in this tier, try the next (broader) one.
+    fn matches(&self, qualified: &Option<String>, terminal: &str) -> Option<Option<i64>> {
+        let pick = |ids: Option<&Vec<i64>>| match ids.map(Vec::as_slice) {
+            Some([id]) => Some(Some(*id)),
+            Some([_, _, ..]) => Some(None),
+            _ => None,
+        };
+        if let Some(q) = qualified {
+            if let Some(r) = pick(self.by_qname.get(q.as_str())) {
+                return Some(r);
+            }
+        }
+        pick(self.by_name.get(terminal))
+    }
+}
+
+/// Indexed paths with their parsed forms, computed once per resolution pass.
+struct KnownPaths<'a> {
+    set: HashSet<&'a str>,
+    /// (path, path without extension, file stem)
+    entries: Vec<(&'a str, &'a str, Option<&'a str>)>,
+}
+
+impl<'a> KnownPaths<'a> {
+    fn new(paths: &'a [String]) -> Self {
+        Self {
+            set: paths.iter().map(String::as_str).collect(),
+            entries: paths
+                .iter()
+                .map(|p| {
+                    let stem = Path::new(p).file_stem().and_then(|s| s.to_str());
+                    (p.as_str(), strip_known_ext(p), stem)
+                })
+                .collect(),
+        }
     }
 }
 
@@ -388,41 +500,6 @@ struct SymRef {
     id: i64,
     name: String,
     qname: String,
-}
-
-/// `Some(Some(id))`: resolved. `Some(None)`: ambiguous within this tier, stop (do not widen).
-/// `None`: no match in this tier, try the next (broader) one.
-fn match_tier<'a>(
-    tier: impl Iterator<Item = &'a SymRef>,
-    qualified: &Option<String>,
-    terminal: &str,
-) -> Option<Option<i64>> {
-    let candidates: Vec<&SymRef> = tier.collect();
-    if let Some(q) = qualified {
-        let matches: Vec<i64> = candidates
-            .iter()
-            .filter(|s| &s.qname == q)
-            .map(|s| s.id)
-            .collect();
-        if matches.len() == 1 {
-            return Some(Some(matches[0]));
-        }
-        if matches.len() > 1 {
-            return Some(None);
-        }
-    }
-    let matches: Vec<i64> = candidates
-        .iter()
-        .filter(|s| s.name == terminal)
-        .map(|s| s.id)
-        .collect();
-    if matches.len() == 1 {
-        return Some(Some(matches[0]));
-    }
-    if matches.len() > 1 {
-        return Some(None);
-    }
-    None
 }
 
 /// `a.b` / `a::b` -> (`Some("a.b")`, `"b"`); bare `foo` -> (`None`, `"foo"`).
@@ -449,7 +526,12 @@ fn parent_dir(path: &str) -> String {
 /// known source extensions / index files; dotted or slashed module paths (`a.b.C`,
 /// `pkg/sub`) are matched as a path suffix. Imprecise by nature (no build-system knowledge);
 /// see docs/v3/CODEGRAPH-NOTES.md.
-fn candidate_paths_for_import(known: &[String], caller_path: &str, target: &str) -> Vec<String> {
+fn candidate_paths_for_import(
+    known: &KnownPaths,
+    by_target: &mut HashMap<String, Vec<String>>,
+    caller_path: &str,
+    target: &str,
+) -> Vec<String> {
     const EXTS: &[&str] = &[
         "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyi", "go", "java", "kt", "kts", "cs",
     ];
@@ -462,7 +544,7 @@ fn candidate_paths_for_import(known: &[String], caller_path: &str, target: &str)
         "index.jsx",
         "__init__.py",
     ];
-    let known_set: HashSet<&str> = known.iter().map(String::as_str).collect();
+    let known_set = &known.set;
     let mut out = Vec::new();
     let target = target.trim();
     if target.starts_with('.') || target.starts_with('/') {
@@ -488,6 +570,10 @@ fn candidate_paths_for_import(known: &[String], caller_path: &str, target: &str)
             }
         }
     } else {
+        // Does not depend on the caller: resolve each module path once.
+        if let Some(hit) = by_target.get(target) {
+            return hit.clone();
+        }
         let suffix = if target.contains('/') {
             target.to_string()
         } else if target.contains('.') {
@@ -496,18 +582,18 @@ fn candidate_paths_for_import(known: &[String], caller_path: &str, target: &str)
             target.to_string()
         };
         let last_segment = suffix.rsplit('/').next().unwrap_or(&suffix).to_string();
-        for path in known {
-            let no_ext = strip_known_ext(path);
-            if no_ext.ends_with(&suffix) || no_ext.ends_with(&format!("/{suffix}")) {
-                out.push(path.clone());
-                continue;
-            }
-            if let Some(stem) = Path::new(path).file_stem().and_then(|s| s.to_str()) {
-                if stem == last_segment {
-                    out.push(path.clone());
-                }
+        let slashed = format!("/{suffix}");
+        for &(path, no_ext, stem) in &known.entries {
+            if no_ext.ends_with(&suffix)
+                || no_ext.ends_with(&slashed)
+                || stem == Some(&last_segment)
+            {
+                out.push(path.to_string());
             }
         }
+        out.dedup();
+        by_target.insert(target.to_string(), out.clone());
+        return out;
     }
     out.dedup();
     out

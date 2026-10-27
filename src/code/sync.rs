@@ -79,7 +79,15 @@ pub fn sync_tree_with(
     let mut seen: HashSet<String> = HashSet::new();
 
     for entry in builder.build() {
-        let entry = entry?;
+        // One unreadable directory (a container's root-owned data dir) must not
+        // abort the pass: removals and call resolution below would never run.
+        let entry = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                crate::core::hybrid::warn_once(format!("code walk: {e}"));
+                continue;
+            }
+        };
         if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
             continue;
         }
@@ -97,7 +105,9 @@ pub fn sync_tree_with(
             cb(report.scanned, &rel);
         }
 
-        let metadata = entry.metadata()?;
+        let Ok(metadata) = entry.metadata() else {
+            continue;
+        };
         let size = metadata.len();
         if rules.max_file_bytes > 0 && size > rules.max_file_bytes {
             report.skipped_too_large += 1;
@@ -122,7 +132,14 @@ pub fn sync_tree_with(
             }
         }
 
-        let bytes = std::fs::read(path)?;
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                crate::core::hybrid::warn_once(format!("code read {rel}: {e}"));
+                seen.remove(&rel);
+                continue;
+            }
+        };
         let sha256 = format!("{:x}", Sha256::digest(&bytes));
 
         if !force {
@@ -150,7 +167,11 @@ pub fn sync_tree_with(
     }
 
     store.set_extractor_version(EXTRACTOR_VERSION)?;
-    store.resolve_calls()?;
+    // Rewrites every call row: on an idle pass over a large tree that alone
+    // costs tens of seconds, for an identical result.
+    if force || !store.calls_resolved()? {
+        store.resolve_calls()?;
+    }
     Ok(report)
 }
 
@@ -215,6 +236,53 @@ mod tests {
         let mut paths = store.all_file_paths().unwrap();
         paths.sort();
         assert_eq!(paths, vec!["kept.rs".to_string()]);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn unreadable_directory_does_not_abort_the_pass() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "kept.rs", "fn c() {}\n");
+        write(root, "locked/hidden.rs", "fn d() {}\n");
+        let locked = root.join("locked");
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        if fs::read_dir(&locked).is_ok() {
+            // Running as root: permissions are not enforced, nothing to test.
+            fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+            return;
+        }
+        let mut store = CodeStore::in_memory().unwrap();
+        let report = sync_tree(&mut store, root, &IgnoreRules::default());
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o755)).unwrap();
+        report.unwrap();
+        assert_eq!(store.all_file_paths().unwrap(), vec!["kept.rs".to_string()]);
+    }
+
+    #[test]
+    fn idle_pass_keeps_calls_resolved_and_a_change_reresolves() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        write(root, "a.rs", "fn main() { helper(); }\nfn helper() {}\n");
+        let mut store = CodeStore::in_memory().unwrap();
+        sync_tree(&mut store, root, &IgnoreRules::default()).unwrap();
+        assert!(store.calls_resolved().unwrap());
+        sync_tree(&mut store, root, &IgnoreRules::default()).unwrap();
+        assert!(store.calls_resolved().unwrap());
+
+        write(root, "b.rs", "fn other() {}\n");
+        let mut probe = CodeStore::in_memory().unwrap();
+        probe
+            .upsert_file("x.rs", Lang::Rust, 1, 1, "h", &FileOutline::default())
+            .unwrap();
+        assert!(
+            !probe.calls_resolved().unwrap(),
+            "a file change marks calls stale"
+        );
+        let report = sync_tree(&mut store, root, &IgnoreRules::default()).unwrap();
+        assert_eq!(report.extracted, 1);
+        assert!(store.calls_resolved().unwrap());
     }
 
     #[test]

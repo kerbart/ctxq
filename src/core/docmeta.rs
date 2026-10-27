@@ -143,6 +143,14 @@ pub fn upsert_many(conn: &mut Connection, entries: &[(&str, &DocMeta)]) -> Resul
     Ok(())
 }
 
+/// Paths that already have a metadata row.
+pub fn known_paths(conn: &mut Connection) -> Result<std::collections::HashSet<String>> {
+    init_tables(conn)?;
+    let mut stmt = conn.prepare("SELECT source_path FROM doc_meta")?;
+    let rows = stmt.query_map([], |r| r.get(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
+}
+
 /// Drops metadata and annotations of files no longer in the index.
 pub fn retain(conn: &mut Connection, active: &std::collections::HashSet<String>) -> Result<()> {
     init_tables(conn)?;

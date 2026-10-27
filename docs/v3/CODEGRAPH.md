@@ -67,6 +67,11 @@ file → files imported by the caller → same directory → name unique across 
 whole repository. For `a.b()`, the qualified name `A.b` is tried first (the
 type, if known), then the terminal name `b`. If several candidates remain,
 `callee_id` stays NULL and the query shows them all as "ambiguous".
+Each tier is a name index built once per file (or directory), so a
+home-sized tree (millions of calls) resolves in linear time. When a caller's
+imports resolve to more than 64 files (a bare `index` / `utils` matched by
+file stem across many repositories), the imports tier is skipped and
+resolution widens to the directory, then the repository.
 
 ## Queries (`src/code/query.rs`)
 

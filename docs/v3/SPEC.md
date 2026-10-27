@@ -584,7 +584,13 @@ first real query does not pay the loading cost.
 **Periodic refresh** (`[daemon].sync_interval_secs` default 60 /
 `scan_interval_secs` default 300; 0 = disabled): in a separate thread, on a
 distinct engine (queries keep being served during the resync), with a scan
-always followed by a sync. The first refresh waits one interval: an immediate
+always followed by a sync. Intervals count from the end of the previous
+pass, so a pass longer than the interval never chains into the next one. An
+idle pass reads no unchanged file: a file whose mtime predates the previous
+sync's start is trusted without hashing (git's "racily clean" rule), and its
+stored metadata is reused instead of re-converting PDF/DOCX. An unreadable
+directory is reported once per process and skipped, in the doc walk and the
+code walk alike. The first refresh waits one interval: an immediate
 write on autostart raced the first `search` calls (`SQLITE_BUSY`). Connections
 open with WAL and a 60 s busy timeout so a cache write during search does not
 fail while the refresher holds a transaction.

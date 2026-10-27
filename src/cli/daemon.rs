@@ -255,13 +255,15 @@ fn refresher(paths: ProjectPaths, settings: Settings, embedder: Embedder) {
             }
         }
         if sync_due {
-            last_sync = Instant::now();
             let res = DocEngine::open_with_embedder(&paths.docs_db, embedder.clone())
                 .and_then(|mut e| e.sync_directory_incremental(&paths.root_dir, None));
             if let Err(e) = res {
                 tracing::warn!("scheduled sync failed: {e:#}");
             }
             sync_code(&paths, &settings);
+            // The interval is idle time between passes: a pass longer than the
+            // interval must not chain straight into the next one.
+            last_sync = Instant::now();
         }
     }
 }

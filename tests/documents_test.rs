@@ -111,3 +111,55 @@ fn documents_front_matter_filters_and_completeness() {
     );
     assert!(c.unaccounted.is_empty(), "{c:?}");
 }
+
+#[test]
+fn incremental_sync_skips_touched_files_and_catches_quick_edits() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let file = root.join("a.md");
+    std::fs::write(&file, "# A\n\n## One\n\nAlpha bravo.\n").unwrap();
+    let mut engine = DocEngine::in_memory().unwrap();
+    assert_eq!(
+        engine
+            .sync_directory_incremental(root, None)
+            .unwrap()
+            .changed,
+        1
+    );
+
+    // Rewritten right after the sync: the mtime may not move on a coarse clock,
+    // so a recent mtime must still be checked against the content.
+    std::fs::write(&file, "# A\n\n## One\n\nCharlie delta.\n").unwrap();
+    assert_eq!(
+        engine
+            .sync_directory_incremental(root, None)
+            .unwrap()
+            .changed,
+        1
+    );
+    assert_eq!(
+        engine
+            .sync_directory_incremental(root, None)
+            .unwrap()
+            .changed,
+        0
+    );
+
+    // Touched (checkout, regenerated with the same text): not re-indexed.
+    let later = std::time::SystemTime::now() + std::time::Duration::from_secs(3600);
+    std::fs::File::options()
+        .write(true)
+        .open(&file)
+        .unwrap()
+        .set_modified(later)
+        .unwrap();
+    assert_eq!(
+        engine
+            .sync_directory_incremental(root, None)
+            .unwrap()
+            .changed,
+        0
+    );
+    let hits = engine.search("Charlie delta", 3).unwrap();
+    assert_eq!(hits.first().map(|h| h.source.as_str()), Some("a.md"));
+}

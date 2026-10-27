@@ -333,6 +333,15 @@ impl DocEngine {
         let full = force
             || (has_chunks > 0 && stored_chunker.as_deref() != Some(CHUNKER_VERSION))
             || (has_chunks > 0 && stored_embedder.as_deref() != Some(embedder_id.as_str()));
+        let started_millis = chrono::Utc::now().timestamp_millis();
+        let settled_before = if full {
+            i64::MIN
+        } else {
+            meta_get(&self.conn, "last_sync_started_millis")
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(i64::MIN)
+        };
+        let known_meta = docmeta::known_paths(&mut self.conn)?;
         let per_row_dirs = self.settings.table_row_dirs();
         let roots = self.settings.collect.roots.clone();
         let dedup_min = self.settings.search.dedup_min_chars;
@@ -347,10 +356,16 @@ impl DocEngine {
         for (i, rel) in files.iter().enumerate() {
             seen.insert(rel.clone());
             let path = root.join(rel);
-            let meta_ok = !full && file_unchanged(&self.conn, rel, &path).unwrap_or(false);
+            let meta_ok =
+                !full && file_unchanged(&self.conn, rel, &path, settled_before).unwrap_or(false);
             if meta_ok {
                 if let Some(h) = hooks.as_mut() {
                     h.on_file(i, total, rel, false);
+                }
+                // Its metadata is already stored: re-reading (and re-converting a
+                // PDF/DOCX) every unchanged file made an idle sync cost minutes.
+                if known_meta.contains(rel) {
+                    continue;
                 }
                 let text = read_for_meta(&path);
                 metas.push((
@@ -438,6 +453,11 @@ impl DocEngine {
         meta_set(&self.conn, "embedder_dim", &self.embedder.dim().to_string())?;
         meta_set(&self.conn, "workspace_root", &root.to_string_lossy())?;
         meta_set(&self.conn, "last_sync", &now_iso())?;
+        meta_set(
+            &self.conn,
+            "last_sync_started_millis",
+            &started_millis.to_string(),
+        )?;
         self.invalidate();
         Ok(SyncReport {
             files: files.len(),
@@ -1007,7 +1027,7 @@ fn discover_with(
             let dent = match dent {
                 Ok(d) => d,
                 Err(e) => {
-                    tracing::warn!("walk: {e}");
+                    warn_once(format!("walk: {e}"));
                     continue;
                 }
             };
@@ -1089,10 +1109,15 @@ fn read_for_meta(path: &Path) -> Option<String> {
     }
 }
 
-fn file_unchanged(conn: &Connection, rel: &str, path: &Path) -> Result<bool> {
-    let meta = std::fs::metadata(path)?;
-    let mtime = mtime_millis(&meta);
-    let hash = content_hash(path)?;
+/// Margin for coarse filesystem clocks: an mtime this close to the sync that
+/// recorded it may hide a later write with the same timestamp.
+const RACY_MTIME_MILLIS: i64 = 2_000;
+
+/// Unchanged = same mtime, trusted without reading the file when the mtime is
+/// older than the previous sync's start (`settled_before`, git's "racily
+/// clean" rule). Otherwise the content hash decides; a moved mtime with the
+/// same content is recorded so the next pass is cheap again.
+fn file_unchanged(conn: &Connection, rel: &str, path: &Path, settled_before: i64) -> Result<bool> {
     let row: Option<(i64, i64)> = conn
         .query_row(
             "SELECT mtime_millis, content_hash FROM doc_file_meta WHERE source_path = ?1",
@@ -1100,7 +1125,23 @@ fn file_unchanged(conn: &Connection, rel: &str, path: &Path) -> Result<bool> {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .ok();
-    Ok(row.is_some_and(|(m, h)| m == mtime && h == hash))
+    let Some((stored_mtime, stored_hash)) = row else {
+        return Ok(false);
+    };
+    let mtime = mtime_millis(&std::fs::metadata(path)?);
+    if mtime == stored_mtime && mtime < settled_before.saturating_sub(RACY_MTIME_MILLIS) {
+        return Ok(true);
+    }
+    if content_hash(path)? != stored_hash {
+        return Ok(false);
+    }
+    if mtime != stored_mtime {
+        conn.execute(
+            "UPDATE doc_file_meta SET mtime_millis = ?1 WHERE source_path = ?2",
+            params![mtime, rel],
+        )?;
+    }
+    Ok(true)
 }
 
 fn record_file(conn: &Connection, rel: &str, path: &Path) -> Result<()> {
@@ -1133,6 +1174,16 @@ fn ymd_from_millis(ms: i64) -> String {
     chrono::DateTime::<chrono::Local>::from(t)
         .format("%Y-%m-%d")
         .to_string()
+}
+
+/// A long-lived daemon re-walks the tree every minute: report an unreadable
+/// path once per process instead of on every pass.
+pub(crate) fn warn_once(msg: String) {
+    static SEEN: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+    let mut seen = SEEN.lock().unwrap_or_else(|p| p.into_inner());
+    if seen.get_or_insert_with(HashSet::new).insert(msg.clone()) {
+        tracing::warn!("{msg}");
+    }
 }
 
 fn now_iso() -> String {
