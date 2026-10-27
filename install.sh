@@ -12,6 +12,9 @@ set -eu
 
 BIN="ctxq"
 BASE="${CTXQ_BASE_URL:-https://ctxq.dev}"
+# Same site on two domains: a corporate proxy may block one of them.
+MIRRORS="$BASE"
+[ -z "${CTXQ_BASE_URL:-}" ] && MIRRORS="$BASE https://ctxq.app"
 BINDIR="${CTXQ_BINDIR:-$HOME/.local/bin}"
 VERSION="${CTXQ_VERSION:-latest}"
 ENVFILE="${CTXQ_ENV:-$HOME/.ctxq/env}"
@@ -50,7 +53,7 @@ dim "target: $os-$arch"
 TMP="$(mktemp -d 2>/dev/null || mktemp -d -t ctxq)"
 trap 'rm -rf "$TMP"' EXIT
 
-# GitHub Releases are canonical. ctxq.dev mirrors the current build.
+# GitHub Releases are canonical. ctxq.dev and ctxq.app mirror the current build.
 # Quiet unless stderr is a TTY — then show a curl progress bar for the archive
 # (not for SHA256SUMS, which is a few dozen bytes).
 curl_get() {
@@ -76,8 +79,11 @@ download() {
   if curl_get "$1" "$gh" "$2"; then
     return 0
   fi
-  dim "GitHub missed $1, trying $BASE/releases/$1"
-  curl_get "$1" "$BASE/releases/$1" "$2" || return 1
+  for m in $MIRRORS; do
+    dim "GitHub missed $1, trying $m/releases/$1"
+    curl_get "$1" "$m/releases/$1" "$2" && return 0
+  done
+  return 1
 }
 
 dim "downloading $ASSET"

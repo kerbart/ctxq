@@ -374,7 +374,13 @@ Rules: no sudo, do not edit project files yourself, stop and quote the exact err
     });
   });
 
-  const ONE_LINER = 'curl -fsSL https://ctxq.dev/install.sh | sh && . "$HOME/.ctxq/env"';
+  // Same site on ctxq.dev and ctxq.app: commands follow the domain the visitor reached.
+  const ORIGIN = /^(www\.)?ctxq\.(dev|app)$/.test(location.hostname) ? 'https://' + location.hostname.replace(/^www\./, '') : 'https://ctxq.dev';
+  if (ORIGIN !== 'https://ctxq.dev') {
+    const w = document.createTreeWalker(document.querySelector('.paste'), NodeFilter.SHOW_TEXT);
+    for (let n; (n = w.nextNode());) n.nodeValue = n.nodeValue.split('https://ctxq.dev').join(ORIGIN);
+  }
+  const ONE_LINER = 'curl -fsSL ' + ORIGIN + '/install.sh | sh && . "$HOME/.ctxq/env"';
   const CMDS = {
     linux: { prompt: '$ ', text: ONE_LINER,
              note: 'Linux x86_64 musl from <a href="https://github.com/kerbart/ctxq/releases">GitHub Releases</a> · arm64 and macOS from the same tag · SHA-256 verified · no root · <code>ctxq</code> is on PATH when the line returns' },
