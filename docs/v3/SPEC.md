@@ -57,6 +57,9 @@ A discovery filter resolves, from the workspace root and `[collect]`:
 - **`table_row_dirs`**: directories (relative to the root) whose large
   markdown tables are *additionally* indexed row by row (see §1.2). The scan
   output directory (`[scan].output_dir`) is always implicitly added to it.
+- **Scan output is always indexed**: `[scan].output_dir` is walked as its own
+  root, so the generated inventories stay indexed even when that directory lives
+  under an excluded (e.g. hidden `.ctxq`) top-level directory.
 
 Required behaviour: the predicates "exclude this directory" and "exclude this
 file (given its size)" must be computable independently of any real disk
@@ -452,7 +455,7 @@ implementation detail is in the code (`sources/*`, `ingest.rs`, `convert.rs`,
 ### 2.1 `[[scan.source]]`: inventories
 
 Each source produces **one dated markdown document**, written under
-`[scan].output_dir` (default `docs/generated`), indexed like any other file
+`[scan].output_dir` (default `.ctxq/generated`), indexed like any other file
 (its tables included, row by row). Fields of a source: `name` (file name
 without extension, must be a simple name: no `/`, no `\`, not starting with
 `.`), `title` (optional, otherwise derived), `kind` (default `"command"`),

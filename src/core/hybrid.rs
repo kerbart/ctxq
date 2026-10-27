@@ -1006,7 +1006,25 @@ fn discover_with(
     let filter = DiscoveryFilter::new(root, &settings.collect)?;
     let restricted = !settings.collect.extensions.is_empty();
     let mut rels = Vec::new();
-    for start in filter.roots() {
+    // Force-include the generated inventories directory as its own walk root, so
+    // it stays indexed even when it lives under an excluded (e.g. hidden `.ctxq`)
+    // top-level directory. The walk starts at `output_dir` itself (depth 0 is
+    // always kept), indexing only the inventories and not its excluded siblings.
+    // In the normal case (output_dir reachable by the main walk) the final
+    // `rels.sort()/dedup()` removes the duplicate.
+    let mut starts = filter.roots();
+    let out_dir = settings
+        .scan
+        .output_dir
+        .trim_start_matches("./")
+        .trim_end_matches('/');
+    if !out_dir.is_empty() && out_dir != "." {
+        let p = root.join(out_dir);
+        if p.is_dir() && !starts.contains(&p) {
+            starts.push(p);
+        }
+    }
+    for start in starts {
         let gate = filter.clone();
         let walk = WalkBuilder::new(&start)
             .standard_filters(filter.respect_gitignore())
