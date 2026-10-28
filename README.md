@@ -187,6 +187,44 @@ embedding server only. Same pattern for Qdrant, federated peers
 Discovery honours `roots` (in priority order), `.ctxqignore`,
 `.gitignore`, size limits, and skips third-party clones (`own_remotes`).
 
+## Giving it a role
+
+The binary is generic; `ctxq.toml` is what turns it into *your* knowledge base.
+Nothing about a machine lives in the code — you describe the environment with
+`[[scan.source]]` blocks, and every scan regenerates those inventories into
+`[scan] output_dir` (default `.ctxq/generated`, always indexed even though
+hidden). A few sources make ctxq the live memory of a host; any shell command
+becomes a dated, searchable document.
+
+```toml
+[scan]
+output_dir = ".ctxq/generated"
+lang = "en"                              # prose language of the generated docs: en | fr
+
+[[scan.source]]                          # built-in collectors — no CLI needed
+name = "containers"
+kind = "docker"                          # also: systemd, ports, projects, scripts
+
+[[scan.source]]
+name = "projects"
+kind = "projects"                        # each sub-dir + its entry document
+dir = "~"
+entry_files = ["README.md", "AGENTS.md", "CLAUDE.md"]
+
+[[scan.source]]                          # any command → a document agents can search
+name = "domains"
+title = "Public hostnames → local port"
+format = "markdown"                      # "markdown" (as is) or "code" (fenced)
+command = ["sh", "-c", "yq -r '.ingress[] | ...' ~/.cloudflared/config.yml"]
+```
+
+Then shape what gets walked for the role you want: `roots` (what to index),
+`exclude_top` (top-level dirs of a root to skip — note it matches *top level
+only*, so a bulky tree moved under a sub-folder needs an `exclude_globs`
+entry), `exclude_dir_names`, `extensions`, and `max_file_bytes`. A home server,
+a monorepo and a research corpus are the same binary with three different
+`ctxq.toml`. See the fully-commented [ctxq.example.toml](ctxq.example.toml).
+
 ## Agent surface
 
 | MCP tool | Use it for |
