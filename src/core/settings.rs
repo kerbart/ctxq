@@ -311,7 +311,7 @@ pub struct ScanSettings {
 impl Default for ScanSettings {
     fn default() -> Self {
         Self {
-            output_dir: "docs/generated".into(),
+            output_dir: ".ctxq/generated".into(),
             lang: "en".into(),
             source: Vec::new(),
         }
@@ -627,7 +627,7 @@ mod tests {
         assert_eq!(s.embed.backend, EmbedBackend::Local);
         assert_eq!(s.collect.roots, ["."]);
         assert!(s.secrets.enabled);
-        assert_eq!(s.table_row_dirs(), ["docs/generated"]);
+        assert_eq!(s.table_row_dirs(), [".ctxq/generated"]);
         assert_eq!(s.daemon.sync_interval_secs, 60);
         assert_eq!(s.daemon.scan_interval_secs, 300);
     }

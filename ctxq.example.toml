@@ -63,7 +63,7 @@ allow = []                     # globs exempted (known false positives)
 enabled = true
 
 [scan]
-output_dir = "docs/generated"  # where inventories are written (indexed row by row)
+output_dir = ".ctxq/generated" # where inventories are written (force-indexed row by row, even though hidden)
 lang = "en"                    # language of generated prose: en | fr
 
 # Any command — its output becomes a dated document.
