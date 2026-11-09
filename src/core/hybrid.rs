@@ -1114,6 +1114,22 @@ fn wanted(path: &Path, restricted: bool) -> bool {
     if TEXT.contains(&ext.as_str()) || ext.is_empty() {
         return true;
     }
+    // Source code goes in the text index too: the code graph only answers
+    // symbol names, so without this a question in plain words never reaches
+    // the code (bench mediatransport 2026-11-09: 0/8 code answers found).
+    // Minified bundles are noise, not code to read.
+    const CODE: &[&str] = &[
+        "rs", "ts", "tsx", "js", "jsx", "mjs", "cjs", "py", "pyi", "go", "java", "kt", "kts",
+        "scala", "groovy", "gradle", "cs", "fs", "vb", "c", "h", "cc", "cpp", "hpp", "m", "mm",
+        "swift", "rb", "php", "pl", "lua", "r", "dart", "ex", "exs", "erl", "clj", "hs", "ml",
+        "zig", "nim", "vue", "svelte", "astro", "sh", "bash", "zsh", "fish", "ps1", "bat",
+        "tf", "hcl", "j2", "jinja", "tpl", "proto", "graphql", "gql", "sql", "nix", "cmake",
+        "mk", "dockerfile",
+    ];
+    if CODE.contains(&ext.as_str()) {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+        return !name.contains(".min.");
+    }
     restricted
 }
 

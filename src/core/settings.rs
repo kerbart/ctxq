@@ -209,7 +209,8 @@ pub struct CollectSettings {
     /// earliest root survives deduplication.
     pub roots: Vec<String>,
     /// Restrict document discovery to these extensions (empty = every
-    /// supported type: markdown, specs, contracts, configs, workflows…).
+    /// supported type: markdown, specs, contracts, configs, workflows and
+    /// source code, which the text search indexes in 60-line windows).
     pub extensions: Vec<String>,
     /// Text files larger than this are skipped (bytes, 0 = no limit).
     pub max_file_bytes: u64,
