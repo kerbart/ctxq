@@ -62,6 +62,7 @@ pub fn tool_specs() -> Vec<ToolSpec> {
                     "since": {"type": "string", "description": "ISO date filter"},
                     "path_prefixes": {"type": "array", "items": {"type": "string"}},
                     "max_chars": {"type": "integer", "default": 0, "description": "0 = unbounded"},
+                    "full": {"type": "boolean", "default": false, "description": "Whole passages instead of 600-char snippets"},
                     "workspace": {"type": "string"},
                 },
                 "required": ["query"],

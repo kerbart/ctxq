@@ -201,9 +201,75 @@ pub fn chunk_markdown(rel_path: &str, content: &str, per_row: bool) -> Vec<DocCh
     out
 }
 
+/// Lines per window for plain text and source files.
+const WINDOW_LINES: usize = 60;
+/// Bytes per window: minified or long-line files are cut before 60 lines.
+const WINDOW_BYTES: usize = 3_000;
+
+/// Plain text and source files (no markdown headings): windows of at most
+/// `WINDOW_LINES` lines or `WINDOW_BYTES` bytes, cut at the last blank line of
+/// the second half of the window when there is one. Without that, a 700-line
+/// source file is one chunk: its vector averages everything and the hit points
+/// at lines 1-700. A file shorter than a window stays one chunk.
+pub fn chunk_lines(rel_path: &str, content: &str) -> Vec<DocChunk> {
+    let lines: Vec<&str> = split_lines(content);
+    let name = std::path::Path::new(rel_path)
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(rel_path)
+        .to_string();
+    let mut out = Vec::new();
+    let mut start = 0;
+    while start < lines.len() {
+        let mut end = start;
+        let mut bytes = 0;
+        while end < lines.len() && end - start < WINDOW_LINES {
+            bytes += lines[end].len() + 1;
+            end += 1;
+            if bytes >= WINDOW_BYTES {
+                break;
+            }
+        }
+        if end < lines.len() {
+            let half = start + (end - start) / 2;
+            if let Some(b) = (half..end).rev().find(|&i| lines[i].trim().is_empty()) {
+                end = b + 1;
+            }
+        }
+        let text = lines[start..end].join("\n");
+        if !text.trim().is_empty() {
+            let idx = out.len();
+            let title = format!("{name}:{}-{}", start + 1, end);
+            out.push(DocChunk {
+                id: generate_chunk_id(rel_path, &title, idx),
+                source_path: rel_path.to_string(),
+                symbol_references: extract_symbol_references(&text),
+                section_title: title,
+                heading_level: 2,
+                hierarchy: vec![name.clone()],
+                content: text,
+                start_line: start + 1,
+                end_line: end,
+            });
+        }
+        start = end;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_files_split_in_line_windows() {
+        let src: String = (1..=150).map(|i| format!("line {i}\n")).collect();
+        let chunks = chunk_lines("a/b.ts", &src);
+        assert_eq!(chunks.len(), 3);
+        assert_eq!((chunks[0].start_line, chunks[0].end_line), (1, 60));
+        assert_eq!((chunks[2].start_line, chunks[2].end_line), (121, 150));
+        assert_eq!(chunk_lines("short.sh", "echo hi\n").len(), 1);
+    }
 
     #[test]
     fn splits_at_h2_h3_with_breadcrumbs() {

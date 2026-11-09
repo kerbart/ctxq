@@ -32,23 +32,45 @@ fn string_array(args: &Value, name: &str) -> Vec<String> {
 
 /// The agent search payload uses `source` / `lines` / `title`. The docs tool
 /// contract also asks for `path` / `line` / `section`. Both stay.
-fn with_search_aliases(mut value: Value) -> Value {
+/// Characters of passage text per MCP search hit (the CLI shows ~6 lines).
+/// Whole passages made a 5-hit answer weigh 15 KB on average, up to 30 KB:
+/// the agent gets `path` + `lines` to read more, or asks `full: true`.
+const SNIPPET_CHARS: usize = 600;
+
+fn with_search_aliases(mut value: Value, full: bool) -> Value {
+    if let Some(obj) = value.as_object_mut() {
+        // Backend hint for humans (`ctxq setup --embed …`): noise on every agent call.
+        obj.remove("upgrade");
+    }
     let Some(results) = value.get_mut("results").and_then(Value::as_array_mut) else {
         return value;
     };
     for entry in results {
-        let source = entry.get("source").cloned().unwrap_or(Value::Null);
         let line = entry
             .get("lines")
             .and_then(Value::as_array)
             .and_then(|lines| lines.first())
             .cloned()
             .unwrap_or(Value::Null);
-        let section = entry.get("title").cloned().unwrap_or(Value::Null);
         if let Some(obj) = entry.as_object_mut() {
+            // `source` and `title` become `path` and `section`, not copies of them.
+            let source = obj.remove("source").unwrap_or(Value::Null);
+            let section = obj.remove("title").unwrap_or(Value::Null);
+            if obj.get("breadcrumb") == Some(&section) {
+                obj.remove("breadcrumb");
+            }
             obj.insert("path".into(), source);
             obj.insert("line".into(), line);
             obj.insert("section".into(), section);
+            if !full {
+                if let Some(text) = obj.get("text").and_then(Value::as_str) {
+                    if text.chars().count() > SNIPPET_CHARS {
+                        let cut: String = text.chars().take(SNIPPET_CHARS).collect();
+                        obj.insert("text".into(), Value::String(cut + " …"));
+                        obj.insert("text_truncated".into(), Value::Bool(true));
+                    }
+                }
+            }
         }
     }
     value
@@ -105,7 +127,6 @@ fn code_entries(root: &Path, query_text: &str, depth: u32) -> anyhow::Result<Vec
                 "kind": hit.kind,
                 "signature": hit.signature,
                 "doc_comment": hit.doc,
-                "snippet": snippet,
                 "text": snippet,
                 "callers": callers.edges,
                 "callees": callees.edges,
@@ -117,7 +138,10 @@ fn code_entries(root: &Path, query_text: &str, depth: u32) -> anyhow::Result<Vec
 impl DocsBackend for DocEngine {
     fn search(&self, root: &Path, args: &Value) -> Value {
         match agent::search(self, root, &search_args(args)) {
-            Ok(value) => with_search_aliases(value),
+            Ok(value) => with_search_aliases(
+                value,
+                args.get("full").and_then(Value::as_bool).unwrap_or(false),
+            ),
             Err(error) => error_value(error),
         }
     }

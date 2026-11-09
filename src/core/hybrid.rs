@@ -978,10 +978,15 @@ fn ingest_file(
         return Outcome::Quarantine(kind);
     }
     let per_row = (office && ext == "xlsx") || mdchunk::in_dirs(rel, per_row_dirs);
+    // Prose formats keep heading sections; source and config files have no
+    // headings and go in line windows.
+    let prose = matches!(ext.as_str(), "html" | "htm" | "txt" | "rst" | "adoc" | "org");
     let chunks = if markdown || office {
         mdchunk::chunk_markdown(rel, &text, per_row)
-    } else {
+    } else if prose {
         parse_markdown(rel, &text)
+    } else {
+        mdchunk::chunk_lines(rel, &text)
     };
     if chunks.is_empty() {
         Outcome::Empty
